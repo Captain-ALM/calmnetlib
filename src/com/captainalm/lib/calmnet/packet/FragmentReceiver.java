@@ -25,6 +25,7 @@ public final class FragmentReceiver {
     private PacketLoader packetLoader;
     private IPacketFactory packetFactory;
     private boolean verifyResponses = false;
+    private boolean makeSureSendDataVerified = false;
 
     /**
      * Constructs a new FragmentReceiver with the specified {@link PacketLoader} and {@link IPacketFactory}.
@@ -262,12 +263,36 @@ public final class FragmentReceiver {
 
     /**
      * Sets whether responses should be verified.
+     * If set to false, {@link #setSentDataWillBeAllVerified(boolean)} will be set to false too.
      *
      * @param state If responses should be verified.
      */
     public void setResponseVerification(boolean state) {
         synchronized (slock) {
             verifyResponses = state;
+            if (makeSureSendDataVerified && !state) makeSureSendDataVerified = false;
+        }
+    }
+
+    /**
+     * Gets whether all sent fragments are verified to be equal.
+     *
+     * @return If all sent fragments will be verified to be equal.
+     */
+    public boolean shouldSentDataBeAllVerified() {
+        return makeSureSendDataVerified;
+    }
+
+    /**
+     * Gets whether all sent fragments are verified to be equal.
+     * Requires {@link #setResponseVerification(boolean)} set to true.
+     *
+     * @param state If all sent fragments will be verified to be equal.
+     */
+    public void setSentDataWillBeAllVerified(boolean state) {
+        synchronized (slock) {
+            if (!verifyResponses) return;
+            makeSureSendDataVerified = state;
         }
     }
 
@@ -276,6 +301,7 @@ public final class FragmentReceiver {
      * the {@link FragmentSendCompletePacket} or {@link FragmentRetrySendPacket} packets are sent.
      * A {@link FragmentSendCompletePacket} is sent if completely received and a
      * {@link FragmentRetrySendPacket} is sent if not completely received.
+     * This excludes empty packets due to {@link #shouldSentDataBeAllVerified()}.
      *
      * @return The number of send packet calls before a completion or restart is forced.
      */
@@ -288,6 +314,7 @@ public final class FragmentReceiver {
      * the {@link FragmentSendCompletePacket} or {@link FragmentRetrySendPacket} packets are sent.
      * A {@link FragmentSendCompletePacket} is sent if completely received and a
      * {@link FragmentRetrySendPacket} is sent if not completely received.
+     * This excludes empty packets due to {@link #shouldSentDataBeAllVerified()}.
      *
      * @param numberOfEmptySends The number of empty sends to allow.
      * @throws IllegalArgumentException numberOfEmptySends is less than 1.
@@ -295,6 +322,28 @@ public final class FragmentReceiver {
     public void setNumberOfEmptySendsTillForcedCompleteOrResend(int numberOfEmptySends) {
         if (numberOfEmptySends < 1) throw new IllegalArgumentException("numberOfEmptySends is less than 1");
         numberOfEmptySendsTillForced = numberOfEmptySends;
+    }
+
+    /**
+     * Stops data verification for the specified Packet ID when {@link #shouldSentDataBeAllVerified()} is true.
+     *
+     * @param id The PacketID to act on.
+     */
+    public void stopDataVerificationAndCompleteReceive(int id) {
+        synchronized (slock) {
+            if (!makeSureSendDataVerified) return;
+            FragmentInput input = registry.get(id);
+            if (input != null) input.verifyReceived = true;
+        }
+    }
+
+    /**
+     * Stops data verification for all packets being received when {@link #shouldSentDataBeAllVerified()} is true.
+     */
+    public void stopAllDataVerificationAndCompleteReceive() {
+        synchronized (slock) {
+            for (int c : registry.keySet()) registry.get(c).verifyReceived = true;
+        }
     }
 
     /**
@@ -334,6 +383,7 @@ public final class FragmentReceiver {
         private int sendsTillCompleteForced;
         private boolean fsendActive = false;
         private final FragmentMessagePacket[] messagePackets;
+        public boolean verifyReceived = false;
 
         public FragmentInput(int id, int count, UUID aid) {
             packetID = id;
@@ -355,12 +405,16 @@ public final class FragmentReceiver {
             if (fsendActive) {
                 if (sendsTillCompleteForced > 0) sendsTillCompleteForced--;
             } else fsendActive = true;
-            if (sendsTillCompleteForced == 0) return (idsToReceive.size() < 1) ? new FragmentSendCompletePacket(packetID, true) : new FragmentRetrySendPacket(packetID, false);
+            if (sendsTillCompleteForced == 0 && !(makeSureSendDataVerified && !verifyReceived)) return (idsToReceive.size() < 1) ? new FragmentSendCompletePacket(packetID, true) : new FragmentRetrySendPacket(packetID, false);
             return null;
         }
 
         public void receivePacket(IPacket packetIn) {
             if ((packetIn instanceof FragmentSendCompletePacket && !((FragmentSendCompletePacket) packetIn).isAcknowledgement())) sendsTillCompleteForced = 0;
+            if (packetIn instanceof FragmentSendVerifyCompletePacket) {
+                sendsTillCompleteForced = 0;
+                verifyReceived = true;
+            }
             if ((packetIn instanceof FragmentRetrySendPacket && ((FragmentRetrySendPacket) packetIn).isAcknowledgement())) sendsTillCompleteForced = numberOfEmptySendsTillForced + 1;
             if (packetIn instanceof FragmentMessagePacket) {
                 FragmentMessagePacket messagePacket = (FragmentMessagePacket) packetIn;
@@ -371,7 +425,7 @@ public final class FragmentReceiver {
         }
 
         public IPacket consume() throws PacketException {
-            if (consumeDone || idsToReceive.size() > 0 || messagePackets.length < 1) return null;
+            if (consumeDone || idsToReceive.size() > 0 || messagePackets.length < 1 || (makeSureSendDataVerified && !verifyReceived)) return null;
             ByteArrayOutputStream packetStream = new ByteArrayOutputStream(messagePackets[0].getFragmentMessage().length);
             for (FragmentMessagePacket messagePacket : messagePackets) {
                 try {

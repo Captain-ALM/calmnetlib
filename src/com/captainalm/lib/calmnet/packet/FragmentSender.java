@@ -19,6 +19,7 @@ public final class FragmentSender {
     private int splitSize = 496;
     private PacketLoader packetLoader;
     private boolean verifyResponses = false;
+    private boolean makeSureSendDataVerified = false;
 
     /**
      * Constructs a new FragmentSender with the specified {@link PacketLoader}.
@@ -241,12 +242,58 @@ public final class FragmentSender {
 
     /**
      * Sets whether responses should be verified.
+     * If set to false, {@link #setSentDataWillBeAllVerified(boolean)} will be set to false too.
      *
      * @param state If responses should be verified.
      */
     public void setResponseVerification(boolean state) {
         synchronized (slock) {
             verifyResponses = state;
+            if (makeSureSendDataVerified && !state) makeSureSendDataVerified = false;
+        }
+    }
+
+    /**
+     * Gets whether all sent fragments are verified to be equal.
+     *
+     * @return If all sent fragments will be verified to be equal.
+     */
+    public boolean shouldSentDataBeAllVerified() {
+        return makeSureSendDataVerified;
+    }
+
+    /**
+     * Gets whether all sent fragments are verified to be equal.
+     * Requires {@link #setResponseVerification(boolean)} set to true.
+     *
+     * @param state If all sent fragments will be verified to be equal.
+     */
+    public void setSentDataWillBeAllVerified(boolean state) {
+        synchronized (slock) {
+            if (!verifyResponses) return;
+            makeSureSendDataVerified = state;
+        }
+    }
+
+    /**
+     * Stops data verification for the specified Packet ID when {@link #shouldSentDataBeAllVerified()} is true.
+     *
+     * @param id The PacketID to act on.
+     */
+    public void stopDataVerificationAndCompleteSend(int id) {
+        synchronized (slock) {
+            if (!makeSureSendDataVerified) return;
+            FragmentOutput output = registry.get(id);
+            if (output != null) output.forceDataVerifiedSendStop = true;
+        }
+    }
+
+    /**
+     * Stops data verification for all packets being sent when {@link #shouldSentDataBeAllVerified()} is true.
+     */
+    public void stopAllDataVerificationAndCompleteSend() {
+        synchronized (slock) {
+            for (int c : registry.keySet()) registry.get(c).forceDataVerifiedSendStop = true;
         }
     }
 
@@ -263,6 +310,7 @@ public final class FragmentSender {
         private final ArrayList<Integer> msgToResendCurrent = new ArrayList<>();
         private int msgPacketIndex = 0;
         public boolean isResending = false;
+        public boolean forceDataVerifiedSendStop = false;
 
         public FragmentOutput(int id, byte[] toSplit) {
             packetID = id;
@@ -282,12 +330,14 @@ public final class FragmentSender {
                 msgPacketIndex = 0;
                 return new FragmentRetrySendPacket(packetID, true);
             }
+            if (!isResending && makeSureSendDataVerified && msgPacketIndex >= messagePackets.length && !forceDataVerifiedSendStop) setResendingOn(true);
             if (isResending) {
+                if (makeSureSendDataVerified && msgPacketIndex >= msgToResendCurrent.size() && !forceDataVerifiedSendStop) setResendingOn(true);
                 if (msgPacketIndex < msgToResendCurrent.size()) return messagePackets[msgToResendCurrent.get(msgPacketIndex++)];
             } else {
                 if (msgPacketIndex < messagePackets.length) return messagePackets[msgPacketIndex++];
             }
-            return new FragmentSendCompletePacket(packetID, false);
+            return (makeSureSendDataVerified && (msgToResend.size() < 1 || forceDataVerifiedSendStop)) ? new FragmentSendVerifyCompletePacket(packetID) : new FragmentSendCompletePacket(packetID, false);
         }
 
         public boolean shouldBeRemovedReceivePacket(IPacket packetIn) {
@@ -300,13 +350,15 @@ public final class FragmentSender {
                 if (!verifyResponses || compareData(responsePacket.getFragmentMessage(), messagePackets[responsePacket.getFragmentID()].getFragmentMessage()))
                     msgToResend.remove(responsePacket.getFragmentID());
             }
-            if (packetIn instanceof FragmentRetrySendPacket && !((FragmentRetrySendPacket) packetIn).isAcknowledgement()) {
-                msgPacketIndex = -1;
-                isResending = true;
-                msgToResendCurrent.clear();
-                msgToResendCurrent.addAll(msgToResend);
-            }
+            if (packetIn instanceof FragmentRetrySendPacket && !((FragmentRetrySendPacket) packetIn).isAcknowledgement()) setResendingOn(false);
             return false;
+        }
+
+        private void setResendingOn(boolean zeroIndex) {
+            msgPacketIndex = (zeroIndex) ? 0 : -1;
+            isResending = true;
+            msgToResendCurrent.clear();
+            msgToResendCurrent.addAll(msgToResend);
         }
 
         private boolean compareData(byte[] data1, byte[] data2) {
