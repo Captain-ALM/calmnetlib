@@ -68,6 +68,7 @@ public class CALMNETPacketFactory implements IPacketFactory {
         if (information.equals(FragmentRetrySendPacket.getTheProtocol())) return new FragmentRetrySendPacket(null, null);
         if (information.equals(FragmentSendCompletePacket.getTheProtocol())) return new FragmentSendCompletePacket(null, null);
         if (information.equals(FragmentSendStopPacket.getTheProtocol())) return new FragmentSendStopPacket(null);
+        if (information.equals(FragmentSendVerifyCompletePacket.getTheProtocol())) return new FragmentSendVerifyCompletePacket(null);
 
         return null;
     }
