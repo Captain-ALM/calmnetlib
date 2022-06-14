@@ -1,6 +1,5 @@
 package com.captainalm.lib.calmnet.packet.fragment;
 
-import com.captainalm.lib.calmnet.packet.FragmentSender;
 import com.captainalm.lib.calmnet.packet.PacketException;
 import com.captainalm.lib.calmnet.packet.PacketProtocolInformation;
 

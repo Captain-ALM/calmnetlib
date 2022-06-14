@@ -1,5 +1,6 @@
 package com.captainalm.lib.calmnet.packet;
 
+import com.captainalm.lib.calmnet.packet.factory.IPacketFactory;
 import com.captainalm.lib.stdcrypt.digest.DigestComparer;
 import com.captainalm.lib.stdcrypt.digest.DigestProvider;
 

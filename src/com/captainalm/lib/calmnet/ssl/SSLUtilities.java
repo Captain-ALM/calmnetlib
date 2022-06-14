@@ -1,4 +1,4 @@
-package com.captainalm.lib.calmnet;
+package com.captainalm.lib.calmnet.ssl;
 
 import javax.net.ssl.*;
 import java.io.File;

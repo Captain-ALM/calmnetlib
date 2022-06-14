@@ -1,6 +1,7 @@
 package com.captainalm.lib.calmnet.packet.core;
 
 import com.captainalm.lib.calmnet.packet.*;
+import com.captainalm.lib.calmnet.packet.factory.IPacketFactory;
 import com.captainalm.lib.calmnet.stream.LengthClampedInputStream;
 import com.captainalm.lib.stdcrypt.encryption.CipherException;
 import com.captainalm.lib.stdcrypt.encryption.ICipherFactory;

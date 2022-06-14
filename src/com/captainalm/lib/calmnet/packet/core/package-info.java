@@ -1,6 +1,8 @@
 /**
  * This package contains the core network packets.
+ * <p>
  * Major ID: 255
+ * </p>
  *
  * @author Captain ALM
  */

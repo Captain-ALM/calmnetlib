@@ -1,5 +1,9 @@
-package com.captainalm.lib.calmnet.packet;
+package com.captainalm.lib.calmnet.packet.factory;
 
+import com.captainalm.lib.calmnet.packet.IPacket;
+import com.captainalm.lib.calmnet.packet.IStreamedPacket;
+import com.captainalm.lib.calmnet.packet.PacketLoader;
+import com.captainalm.lib.calmnet.packet.PacketProtocolInformation;
 import com.captainalm.lib.calmnet.packet.core.*;
 
 /**

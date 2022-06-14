@@ -1,4 +1,8 @@
-package com.captainalm.lib.calmnet.packet;
+package com.captainalm.lib.calmnet.packet.factory;
+
+import com.captainalm.lib.calmnet.packet.IPacket;
+import com.captainalm.lib.calmnet.packet.IStreamedPacket;
+import com.captainalm.lib.calmnet.packet.PacketProtocolInformation;
 
 /**
  * This interface provides the ability to construct {@link IPacket}s given their {@link PacketProtocolInformation}.

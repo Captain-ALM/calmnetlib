@@ -1,6 +1,9 @@
-package com.captainalm.lib.calmnet.packet;
+package com.captainalm.lib.calmnet.packet.fragment;
 
-import com.captainalm.lib.calmnet.packet.fragment.*;
+import com.captainalm.lib.calmnet.packet.IPacket;
+import com.captainalm.lib.calmnet.packet.factory.IPacketFactory;
+import com.captainalm.lib.calmnet.packet.PacketException;
+import com.captainalm.lib.calmnet.packet.PacketLoader;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
