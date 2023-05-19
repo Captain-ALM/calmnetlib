@@ -50,7 +50,7 @@ public class NetMarshalClient implements Closeable {
     protected final Queue<IPacket> receivedPackets = new LinkedList<>();
     protected final Object slockReceive = new Object();
 
-    protected NetMarshalClient(InetAddress remoteAddress, int remotePort, IPacketFactory factory, PacketLoader loader, boolean isMulticast, boolean isSocketNull) {
+    private NetMarshalClient(InetAddress remoteAddress, int remotePort, IPacketFactory factory, PacketLoader loader, boolean isMulticast, boolean isSocketNull) {
         if (isSocketNull) throw new NullPointerException("socketIn is null");
         if (remoteAddress == null) throw new NullPointerException(((isMulticast) ? "multicastGroupAddress" : "remoteAddress") + " is null");
         this.remoteAddress = remoteAddress;
@@ -205,7 +205,7 @@ public class NetMarshalClient implements Closeable {
      *
      * @return If the marshal is running.
      */
-    public synchronized boolean isRunning() {
+    public synchronized final boolean isRunning() {
         return running;
     }
 
@@ -214,7 +214,7 @@ public class NetMarshalClient implements Closeable {
      *
      * @return Is the marshal ssl upgraded.
      */
-    public synchronized boolean isSSLUpgraded() {
+    public synchronized final boolean isSSLUpgraded() {
         if (!running) return false;
         return socket instanceof SSLSocket;
     }
@@ -227,7 +227,7 @@ public class NetMarshalClient implements Closeable {
      * @throws PacketException An exception has occurred.
      * @throws NullPointerException packetIn is null.
      */
-    public synchronized void sendPacket(IPacket packetIn) throws IOException, PacketException {
+    public synchronized final void sendPacket(IPacket packetIn) throws IOException, PacketException {
         if (packetIn == null) throw new NullPointerException("packetIn is null");
         synchronized ((socket == null) ? dsocket : socket) {
             loader.writePacket(outputStream, packetIn, true);
@@ -315,7 +315,7 @@ public class NetMarshalClient implements Closeable {
         sslUpgrade(context, remoteHostName);
     }
 
-    protected synchronized void sslUpgrade(SSLContext context, String remoteHostName) throws SSLUtilityException, IOException {
+    protected synchronized final void sslUpgrade(SSLContext context, String remoteHostName) throws SSLUtilityException, IOException {
         if (!running || socket == null || socket instanceof SSLSocket) return;
         if (context == null) throw new NullPointerException("context is null");
         if (!disablePacketReading && Thread.currentThread() != receiveThread) throw new IllegalStateException("sslUpgrade methods should be called in a BiConsumer (for setReceiveBiConsumer) within the target NetMarshalClient" +
@@ -387,7 +387,7 @@ public class NetMarshalClient implements Closeable {
      * @throws IOException An I/O Exception has occurred.
      */
     @Override
-    public synchronized void close() throws IOException {
+    public synchronized final void close() throws IOException {
         if (running) {
             running = false;
             if (Thread.currentThread() != receiveThread) receiveThread.interrupt();
