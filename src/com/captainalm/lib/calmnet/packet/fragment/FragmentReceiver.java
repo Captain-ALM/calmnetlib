@@ -97,10 +97,11 @@ public final class FragmentReceiver {
      * Receives a {@link IPacket} into the FragmentReceiver.
      *
      * @param packetIn The packet to receive.
+     * @return If the received packet was a fragment packet.
      * @throws PacketException A Packet Exception has occurred.
      */
-    public void receivePacket(IPacket packetIn) throws PacketException {
-        if (packetIn == null || !packetIn.isValid()) return;
+    public boolean receivePacket(IPacket packetIn) throws PacketException {
+        if (packetIn == null || !packetIn.isValid()) return false;
         if (packetIn instanceof FragmentPIDPacket) {
             synchronized (slock) {
                 FragmentInput fragmentInput = registry.get(((FragmentPIDPacket) packetIn).getPacketID());
@@ -119,7 +120,10 @@ public final class FragmentReceiver {
                     }
                 }
             }
+        } else {
+            return false;
         }
+        return true;
     }
 
     private int getCurrentID() {

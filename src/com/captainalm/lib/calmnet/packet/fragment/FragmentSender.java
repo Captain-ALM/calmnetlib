@@ -3,7 +3,6 @@ package com.captainalm.lib.calmnet.packet.fragment;
 import com.captainalm.lib.calmnet.packet.IPacket;
 import com.captainalm.lib.calmnet.packet.PacketException;
 import com.captainalm.lib.calmnet.packet.PacketLoader;
-import com.captainalm.lib.calmnet.packet.fragment.*;
 
 import java.util.*;
 
@@ -85,10 +84,11 @@ public final class FragmentSender {
      * Receives a {@link IPacket} into the FragmentSender.
      *
      * @param packetIn The packet to receive.
+     * @return If the received packet was a fragment packet.
      * @throws PacketException A Packet Exception has occurred.
      */
-    public void receivePacket(IPacket packetIn) throws PacketException {
-        if (packetIn == null || !packetIn.isValid()) return;
+    public boolean receivePacket(IPacket packetIn) throws PacketException {
+        if (packetIn == null || !packetIn.isValid()) return false;
         if (packetIn instanceof FragmentPIDPacket) {
             int currentID = ((FragmentPIDPacket) packetIn).getPacketID();
             synchronized (slock) {
@@ -106,7 +106,9 @@ public final class FragmentSender {
                     }
                 }
             }
+            return true;
         }
+        return false;
     }
 
     /**
