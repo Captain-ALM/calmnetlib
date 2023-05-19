@@ -5,7 +5,6 @@
  */
 package com.captainalm.lib.calmnet.marshal;
 /*TODO:
-NetMarshalClient(Wrapped) - Fragmentation processing support
 NetMarshalServer - Has a thread for UDP receiving and has a dictionary of input streams (final, created in constructor)
 NetMarshalServerWrapped - Constructs NetMarshalClientWrapped instead of NetMarshalClient, stream wrapping support
  */

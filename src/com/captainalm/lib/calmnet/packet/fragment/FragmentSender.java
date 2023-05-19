@@ -180,6 +180,18 @@ public final class FragmentSender {
     }
 
     /**
+     * Polls the last finished packet ID.
+     *
+     * @return The last finished packet ID.
+     */
+    public Integer pollLastIDFinished() {
+        synchronized (slockfinish) {
+            Integer polled = finishedIDs.poll();
+            return (polled == null) ? -1 : polled;
+        }
+    }
+
+    /**
      * Clears all the last finished packet IDs.
      */
     public void clearLastIDFinished() {

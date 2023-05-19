@@ -57,6 +57,17 @@ public final class FragmentReceiver {
     }
 
     /**
+     * Receives a {@link IPacket} from the FragmentReceiver.
+     *
+     * @return The received packet or null.
+     */
+    public IPacket receivePacketPolling() {
+        synchronized (slockqueue) {
+            return outputQueue.poll();
+        }
+    }
+
+    /**
      * Sends the current {@link IPacket}s from the FragmentReceiver.
      *
      * @return The packets to send.
@@ -201,6 +212,18 @@ public final class FragmentReceiver {
     public int getLastIDFinished() throws InterruptedException {
         synchronized (slockfinish) {
             while (finishedIDs.size() < 1) slockfinish.wait();
+            Integer polled = finishedIDs.poll();
+            return (polled == null) ? -1 : polled;
+        }
+    }
+
+    /**
+     * Polls the last finished packet ID.
+     *
+     * @return The last finished packet ID.
+     */
+    public Integer pollLastIDFinished() {
+        synchronized (slockfinish) {
             Integer polled = finishedIDs.poll();
             return (polled == null) ? -1 : polled;
         }

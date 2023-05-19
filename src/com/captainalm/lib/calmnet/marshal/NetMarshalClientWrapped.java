@@ -25,24 +25,26 @@ public class NetMarshalClientWrapped extends NetMarshalClient {
 
     /**
      * Constructs a new NetMarshalClientWrapped with the specified {@link Socket}, {@link IPacketFactory},
-     * {@link PacketLoader}, {@link Function} for wrapping the input stream and the {@link Function} for wrapping the output stream.
+     * {@link PacketLoader}, {@link FragmentationOptions}, {@link Function} for wrapping the input stream and the {@link Function} for wrapping the output stream.
      * Wrapped streams should close the underlying stream when closed.
      *
      * @param socketIn The socket to use.
      * @param factory The packet factory to use.
      * @param loader The packet loader to use.
+     * @param fragmentationOptions The fragmentation options, null to disable fragmentation.
      * @param inputStreamWrapper The input stream wrapper to use (Can be null).
      * @param outputStreamWrapper The output stream wrapper to use (Can be null).
      * @throws NullPointerException socketIn, factory or loader is null.
+     * @throws IllegalArgumentException Fragmentation options failed validation.
      */
-    public NetMarshalClientWrapped(Socket socketIn, IPacketFactory factory, PacketLoader loader, Function<InputStream, InputStream> inputStreamWrapper, Function<OutputStream, OutputStream> outputStreamWrapper) {
-        super(socketIn, factory, loader);
+    public NetMarshalClientWrapped(Socket socketIn, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions, Function<InputStream, InputStream> inputStreamWrapper, Function<OutputStream, OutputStream> outputStreamWrapper) {
+        super(socketIn, factory, loader, fragmentationOptions);
         setupWrappers(inputStreamWrapper, outputStreamWrapper);
     }
 
     /**
      * Constructs a new NetMarshalClientWrapped with the specified {@link MulticastSocket}, multicast group {@link InetAddress}, multicast port, {@link IPacketFactory},
-     * {@link PacketLoader}, {@link Function} for wrapping the input stream and the {@link Function} for wrapping the output stream.
+     * {@link PacketLoader}, {@link FragmentationOptions}, {@link Function} for wrapping the input stream and the {@link Function} for wrapping the output stream.
      * The {@link MulticastSocket} will join the multicast group.
      * Wrapped streams should close the underlying stream when closed.
      *
@@ -51,20 +53,21 @@ public class NetMarshalClientWrapped extends NetMarshalClient {
      * @param multicastGroupPort The multicast group port.
      * @param factory The packet factory to use.
      * @param loader The packet loader to use.
+     * @param fragmentationOptions The fragmentation options, null to disable fragmentation.
      * @param inputStreamWrapper The input stream wrapper to use (Can be null).
      * @param outputStreamWrapper The output stream wrapper to use (Can be null).
      * @throws IOException There is an error joining or multicastGroupAddress is not a multicast address.
      * @throws NullPointerException socketIn, multicastGroupAddress, factory or loader is null.
-     * @throws IllegalArgumentException multicastGroupPort is less than 0 or greater than 65535.
+     * @throws IllegalArgumentException multicastGroupPort is less than 0 or greater than 65535 or fragmentation options failed validation.
      */
-    public NetMarshalClientWrapped(MulticastSocket socketIn, InetAddress multicastGroupAddress, int multicastGroupPort, IPacketFactory factory, PacketLoader loader, Function<InputStream, InputStream> inputStreamWrapper, Function<OutputStream, OutputStream> outputStreamWrapper) throws IOException {
-        super(socketIn, multicastGroupAddress, multicastGroupPort, factory, loader);
+    public NetMarshalClientWrapped(MulticastSocket socketIn, InetAddress multicastGroupAddress, int multicastGroupPort, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions, Function<InputStream, InputStream> inputStreamWrapper, Function<OutputStream, OutputStream> outputStreamWrapper) throws IOException {
+        super(socketIn, multicastGroupAddress, multicastGroupPort, factory, loader, fragmentationOptions);
         setupWrappers(inputStreamWrapper, outputStreamWrapper);
     }
 
     /**
      * Constructs a new NetMarshalClientWrapped with the specified {@link DatagramSocket}, remote {@link InetAddress}, remote port, {@link IPacketFactory},
-     * {@link PacketLoader}, {@link Function} for wrapping the input stream and the {@link Function} for wrapping the output stream.
+     * {@link PacketLoader}, {@link FragmentationOptions}, {@link Function} for wrapping the input stream and the {@link Function} for wrapping the output stream.
      * Wrapped streams should close the underlying stream when closed.
      *
      * @param socketIn The datagram socket to use.
@@ -73,13 +76,14 @@ public class NetMarshalClientWrapped extends NetMarshalClient {
      * @param inputStream The receiving input stream.
      * @param factory The packet factory to use.
      * @param loader The loader to use.
+     * @param fragmentationOptions The fragmentation options, null to disable fragmentation.
      * @param inputStreamWrapper The input stream wrapper to use (Can be null).
      * @param outputStreamWrapper The output stream wrapper to use (Can be null).
      * @throws NullPointerException socketIn, remoteAddress, inputStream, factory or loader is null.
-     * @throws IllegalArgumentException remotePort is less than 0 or greater than 65535.
+     * @throws IllegalArgumentException remotePort is less than 0 or greater than 65535 or fragmentation options failed validation.
      */
-    public NetMarshalClientWrapped(DatagramSocket socketIn, InetAddress remoteAddress, int remotePort, InputStream inputStream, IPacketFactory factory, PacketLoader loader, Function<InputStream, InputStream> inputStreamWrapper, Function<OutputStream, OutputStream> outputStreamWrapper) {
-        super(socketIn, remoteAddress, remotePort, inputStream, factory,loader);
+    public NetMarshalClientWrapped(DatagramSocket socketIn, InetAddress remoteAddress, int remotePort, InputStream inputStream, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions, Function<InputStream, InputStream> inputStreamWrapper, Function<OutputStream, OutputStream> outputStreamWrapper) {
+        super(socketIn, remoteAddress, remotePort, inputStream, factory, loader, fragmentationOptions);
         setupWrappers(inputStreamWrapper, outputStreamWrapper);
     }
 

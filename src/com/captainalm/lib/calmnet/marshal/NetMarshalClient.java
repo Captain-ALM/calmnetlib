@@ -4,6 +4,7 @@ import com.captainalm.lib.calmnet.packet.IPacket;
 import com.captainalm.lib.calmnet.packet.PacketException;
 import com.captainalm.lib.calmnet.packet.PacketLoader;
 import com.captainalm.lib.calmnet.packet.factory.IPacketFactory;
+import com.captainalm.lib.calmnet.packet.fragment.*;
 import com.captainalm.lib.calmnet.ssl.SSLUtilities;
 import com.captainalm.lib.calmnet.ssl.SSLUtilityException;
 import com.captainalm.lib.calmnet.stream.NetworkInputStream;
@@ -16,9 +17,12 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.net.Socket;
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * This class provides a managed way of networking on the client side.
@@ -27,7 +31,7 @@ import java.util.function.BiConsumer;
  * @author Captain ALM
  */
 public class NetMarshalClient implements Closeable {
-    protected boolean running = true;
+    protected boolean running;
 
     protected Socket socket;
     protected DatagramSocket dsocket;
@@ -37,6 +41,7 @@ public class NetMarshalClient implements Closeable {
     protected OutputStream rootOutputStream;
     protected BiConsumer<IPacket, NetMarshalClient> receiveBiConsumer;
     protected BiConsumer<Exception, NetMarshalClient> receiveExceptionBiConsumer;
+    protected Consumer<NetMarshalClient> closedConsumer;
     protected final Object slockPacketRead = new Object();
     protected boolean disablePacketReading;
 
@@ -50,7 +55,16 @@ public class NetMarshalClient implements Closeable {
     protected final Queue<IPacket> receivedPackets = new LinkedList<>();
     protected final Object slockReceive = new Object();
 
-    private NetMarshalClient(InetAddress remoteAddress, int remotePort, IPacketFactory factory, PacketLoader loader, boolean isMulticast, boolean isSocketNull) {
+    protected final FragmentationOptions fragmentationOptions;
+    protected final FragmentReceiver fragmentReceiver;
+    protected final HashMap<Integer, LocalDateTime> fragmentRMM;
+    protected final FragmentSender fragmentSender;
+    protected final HashMap<Integer, LocalDateTime> fragmentSMM;
+    protected final Thread fragmentMonitorThread;
+    protected final Thread fragmentFinishReceiveMonitorThread;
+    protected final Thread fragmentFinishSendMonitorThread;
+
+    private NetMarshalClient(InetAddress remoteAddress, int remotePort, IPacketFactory factory, PacketLoader loader, boolean isMulticast, boolean isSocketNull, FragmentationOptions fragmentationOptions) {
         if (isSocketNull) throw new NullPointerException("socketIn is null");
         if (remoteAddress == null) throw new NullPointerException(((isMulticast) ? "multicastGroupAddress" : "remoteAddress") + " is null");
         this.remoteAddress = remoteAddress;
@@ -61,27 +75,102 @@ public class NetMarshalClient implements Closeable {
         this.factory = factory;
         if (loader == null) throw new NullPointerException("loader is null");
         this.loader = loader;
-        receiveThread = new Thread(() -> {
-            while (running) receiveThreadExecuted();
-        }, "thread_receive_" + remoteAddress.getHostAddress() + ":" + remotePort);
+        this.fragmentationOptions = fragmentationOptions;
+        if (fragmentationOptions == null) {
+            fragmentReceiver = null;
+            fragmentRMM = null;
+            fragmentSender = null;
+            fragmentSMM = null;
+            fragmentMonitorThread = null;
+            fragmentFinishReceiveMonitorThread = null;
+            fragmentFinishSendMonitorThread = null;
+            receiveThread = new Thread(() -> {
+                while (running) receiveThreadExecuted();
+            }, "thread_receive_" + remoteAddress.getHostAddress() + ":" + remotePort);
+        } else {
+            fragmentationOptions.validate();
+            fragmentReceiver = new FragmentReceiver(loader, factory);
+            fragmentationOptions.setupReceiver(fragmentReceiver);
+            fragmentRMM = new HashMap<>();
+            fragmentSender = new FragmentSender(loader);
+            fragmentationOptions.setupSender(fragmentSender);
+            fragmentSMM = new HashMap<>();
+            fragmentMonitorThread = new Thread(() -> {
+                int ageCheckTime = this.fragmentationOptions.maximumFragmentAge - 1;
+                while (running) {
+                    int id = -1;
+                    synchronized (this.fragmentationOptions) {
+                        for (int c : fragmentRMM.keySet()) {
+                            if (!fragmentRMM.get(c).plusSeconds(ageCheckTime).isAfter(LocalDateTime.now())) {
+                                fragmentRMM.remove(id);
+                                fragmentReceiver.deletePacketFromRegistry(c);
+                            }
+                        }
+                        for (int c : fragmentSMM.keySet()) {
+                            if (!fragmentSMM.get(c).plusSeconds(ageCheckTime).isAfter(LocalDateTime.now())) {
+                                fragmentSMM.remove(id);
+                                fragmentSender.deletePacketFromRegistry(c);
+                            }
+                        }
+                    }
+                    try {
+                        Thread.sleep(this.fragmentationOptions.maximumFragmentAge);
+                    } catch (InterruptedException e) {
+                    }
+                }
+                fragmentReceiver.clearRegistry();
+                fragmentSender.clearRegistry();
+            }, "thread_frag_monitor_" + remoteAddress.getHostAddress() + ":" + remotePort);
+            fragmentFinishReceiveMonitorThread = new Thread(() -> {
+                while (running) {
+                    int id = -1;
+                    try {
+                        while ((id = fragmentReceiver.getLastIDFinished()) != -1) synchronized (this.fragmentationOptions) {
+                            fragmentRMM.remove(id);
+                        }
+                    } catch (InterruptedException e) {
+                    }
+                }
+                fragmentReceiver.clearLastIDFinished();
+            }, "thread_frag_fin_recv_monitor_" + remoteAddress.getHostAddress() + ":" + remotePort);
+            fragmentFinishSendMonitorThread = new Thread(() -> {
+                while (running) {
+                    int id = -1;
+                    try {
+                        while ((id = fragmentSender.getLastIDFinished()) != -1) synchronized (this.fragmentationOptions) {
+                            fragmentSMM.remove(id);
+                        }
+                    } catch (InterruptedException e) {
+                    }
+                }
+                fragmentSender.clearLastIDFinished();
+            }, "thread_frag_fin_recv_monitor_" + remoteAddress.getHostAddress() + ":" + remotePort);
+            receiveThread = new Thread(() -> {
+                while (running) receiveThreadExecutedWithFragmentation();
+                fragmentReceiver.clearWaitingPackets();
+                fragmentSender.clearWaitingPackets();
+            }, "thread_receive_" + remoteAddress.getHostAddress() + ":" + remotePort);
+        }
     }
 
     /**
-     * Constructs a new NetMarshalClient with the specified {@link Socket}, {@link IPacketFactory} and {@link PacketLoader}.
+     * Constructs a new NetMarshalClient with the specified {@link Socket}, {@link IPacketFactory}, {@link PacketLoader} and {@link FragmentationOptions}.
      *
      * @param socketIn The socket to use.
      * @param factory The packet factory to use.
      * @param loader The packet loader to use.
+     * @param fragmentationOptions The fragmentation options, null to disable fragmentation.
      * @throws NullPointerException socketIn, factory or loader is null.
+     * @throws IllegalArgumentException Fragmentation options failed validation.
      */
-    public NetMarshalClient(Socket socketIn, IPacketFactory factory, PacketLoader loader) {
-        this((socketIn == null) ? null : socketIn.getInetAddress(), (socketIn == null) ? -1 : socketIn.getPort(), factory, loader, false, socketIn == null);
+    public NetMarshalClient(Socket socketIn, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions) {
+        this((socketIn == null) ? null : socketIn.getInetAddress(), (socketIn == null) ? -1 : socketIn.getPort(), factory, loader, false, socketIn == null, fragmentationOptions);
         socket = socketIn;
         setStreams(new NetworkInputStream(socketIn), new NetworkOutputStream(socketIn));
     }
 
     /**
-     * Constructs a new NetMarshalClient with the specified {@link MulticastSocket}, multicast group {@link InetAddress}, multicast port, {@link IPacketFactory} and {@link PacketLoader}.
+     * Constructs a new NetMarshalClient with the specified {@link MulticastSocket}, multicast group {@link InetAddress}, multicast port, {@link IPacketFactory}, {@link PacketLoader} and {@link FragmentationOptions}.
      * The {@link MulticastSocket} will join the multicast group.
      *
      * @param socketIn The multicast socket to use.
@@ -89,12 +178,13 @@ public class NetMarshalClient implements Closeable {
      * @param multicastGroupPort The multicast group port.
      * @param factory The packet factory to use.
      * @param loader The packet loader to use.
+     * @param fragmentationOptions The fragmentation options, null to disable fragmentation.
      * @throws IOException There is an error joining or multicastGroupAddress is not a multicast address.
      * @throws NullPointerException socketIn, multicastGroupAddress, factory or loader is null.
-     * @throws IllegalArgumentException multicastGroupPort is less than 0 or greater than 65535.
+     * @throws IllegalArgumentException multicastGroupPort is less than 0 or greater than 65535 or fragmentation options failed validation.
      */
-    public NetMarshalClient(MulticastSocket socketIn, InetAddress multicastGroupAddress, int multicastGroupPort, IPacketFactory factory, PacketLoader loader) throws IOException {
-        this(multicastGroupAddress, multicastGroupPort, factory, loader, true, socketIn == null);
+    public NetMarshalClient(MulticastSocket socketIn, InetAddress multicastGroupAddress, int multicastGroupPort, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions) throws IOException {
+        this(multicastGroupAddress, multicastGroupPort, factory, loader, true, socketIn == null, fragmentationOptions);
         socketIn.joinGroup(multicastGroupAddress);
         NetworkOutputStream netOut = new NetworkOutputStream(socketIn, 65535);
         netOut.setDatagramTarget(multicastGroupAddress, multicastGroupPort);
@@ -102,7 +192,7 @@ public class NetMarshalClient implements Closeable {
     }
 
     /**
-     * Constructs a new NetMarshalClient with the specified {@link DatagramSocket}, remote {@link InetAddress}, remote port, {@link IPacketFactory} and {@link PacketLoader}.
+     * Constructs a new NetMarshalClient with the specified {@link DatagramSocket}, remote {@link InetAddress}, remote port, {@link IPacketFactory}, {@link PacketLoader} and {@link FragmentationOptions}.
      *
      * @param socketIn The datagram socket to use.
      * @param remoteAddress The remote address to send data to.
@@ -110,13 +200,14 @@ public class NetMarshalClient implements Closeable {
      * @param inputStream The receiving input stream.
      * @param factory The packet factory to use.
      * @param loader The loader to use.
+     * @param fragmentationOptions The fragmentation options, null to disable fragmentation.
      * @throws NullPointerException socketIn, remoteAddress, inputStream, factory or loader is null.
-     * @throws IllegalArgumentException remotePort is less than 0 or greater than 65535.
+     * @throws IllegalArgumentException remotePort is less than 0 or greater than 65535 or fragmentation options failed validation.
      */
-    public NetMarshalClient(DatagramSocket socketIn, InetAddress remoteAddress, int remotePort, InputStream inputStream, IPacketFactory factory, PacketLoader loader) {
-        this(remoteAddress, remotePort, factory, loader, false, socketIn == null);
+    public NetMarshalClient(DatagramSocket socketIn, InetAddress remoteAddress, int remotePort, InputStream inputStream, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions) {
+        this(remoteAddress, remotePort, factory, loader, false, socketIn == null, fragmentationOptions);
         if (inputStream == null) throw new NullPointerException("inputStream is null");
-        setStreams(null, new NetworkOutputStream(socketIn, 65535));
+        setStreams(null, new NetworkOutputStream(socketIn, 65535, remoteAddress, remotePort));
         rootInputStream = inputStream;
         this.inputStream = inputStream;
     }
@@ -126,6 +217,45 @@ public class NetMarshalClient implements Closeable {
         this.inputStream = rootInputStream;
         if (outputStream != null) rootOutputStream = outputStream;
         this.outputStream = rootOutputStream;
+    }
+
+    protected void updateMState(HashMap<Integer, LocalDateTime> mm, IPacket packet) {
+        if (packet == null || !packet.isValid()) return;
+        synchronized (fragmentationOptions) {
+            if (packet instanceof FragmentAllocationPacket) {
+                mm.put(((FragmentAllocationPacket) packet).getPacketID(), LocalDateTime.now());
+            } else if (packet instanceof FragmentPIDPacket && !(packet instanceof FragmentSendStopPacket)) {
+                if (mm.containsKey(((FragmentPIDPacket) packet).getPacketID()))
+                    mm.put(((FragmentPIDPacket) packet).getPacketID(), LocalDateTime.now());
+            }
+        }
+    }
+
+    protected void sendFragmentData() throws PacketException, IOException {
+        IPacket[] packets = fragmentSender.sendPacket();
+        for (IPacket c : packets) if (c != null) {
+            updateMState(fragmentSMM, c);
+            loader.writePacket(outputStream, c, true);
+        }
+        packets = fragmentReceiver.sendPacket();
+        for (IPacket c : packets) if (c != null) {
+            updateMState(fragmentRMM, c);
+            loader.writePacket(outputStream, c, true);
+        }
+    }
+
+    /**
+     * Opens the marshal.
+     */
+    public synchronized final void open() {
+        if (running) return;
+        running = true;
+        if (fragmentationOptions != null) {
+            fragmentMonitorThread.start();
+            fragmentFinishReceiveMonitorThread.start();
+            fragmentFinishSendMonitorThread.start();
+        }
+        receiveThread.start();
     }
 
     /**
@@ -210,6 +340,15 @@ public class NetMarshalClient implements Closeable {
     }
 
     /**
+     * Gets the {@link FragmentationOptions} of the client.
+     *
+     * @return The fragmentation options or null if fragmentation is disabled.
+     */
+    public FragmentationOptions getFragmentationOptions() {
+        return fragmentationOptions;
+    }
+
+    /**
      * Gets if the marshal is ssl upgraded.
      *
      * @return Is the marshal ssl upgraded.
@@ -223,14 +362,20 @@ public class NetMarshalClient implements Closeable {
      * Sends a {@link IPacket}.
      *
      * @param packetIn The packet to send.
+     * @param directSend Whether the packet should be sent directly or through the fragmentation system.
      * @throws IOException A stream exception has occurred.
      * @throws PacketException An exception has occurred.
      * @throws NullPointerException packetIn is null.
      */
-    public synchronized final void sendPacket(IPacket packetIn) throws IOException, PacketException {
+    public synchronized final void sendPacket(IPacket packetIn, boolean directSend) throws IOException, PacketException {
         if (packetIn == null) throw new NullPointerException("packetIn is null");
         synchronized ((socket == null) ? dsocket : socket) {
-            loader.writePacket(outputStream, packetIn, true);
+            if (fragmentationOptions == null || directSend) {
+                loader.writePacket(outputStream, packetIn, true);
+            } else {
+                fragmentSender.sendPacket(packetIn);
+            }
+            if (fragmentationOptions != null) sendFragmentData();
         }
     }
 
@@ -382,6 +527,26 @@ public class NetMarshalClient implements Closeable {
     }
 
     /**
+     * Gets the {@link Consumer} closed consumer.
+     *
+     * @return The closed or null.
+     */
+    public Consumer<NetMarshalClient> getClosedConsumer() {
+        return closedConsumer;
+    }
+
+    /**
+     * Sets the {@link Consumer} closed consumer.
+     *
+     * @param consumer The new closed consumer.
+     * @throws NullPointerException consumer is null.
+     */
+    public void setClosedConsumer(Consumer<NetMarshalClient> consumer) {
+        if (consumer == null) throw new NullPointerException("consumer is null");
+        closedConsumer = consumer;
+    }
+
+    /**
      * Closes the marshal, closing all its streams.
      *
      * @throws IOException An I/O Exception has occurred.
@@ -391,11 +556,23 @@ public class NetMarshalClient implements Closeable {
         if (running) {
             running = false;
             if (Thread.currentThread() != receiveThread) receiveThread.interrupt();
+            if (fragmentationOptions != null) {
+                fragmentMonitorThread.interrupt();
+                fragmentFinishReceiveMonitorThread.interrupt();
+                fragmentFinishSendMonitorThread.interrupt();
+            }
             receivedPackets.clear();
-            inputStream.close();
-            outputStream.close();
-            socket = null;
-            dsocket = null;
+            try {
+                inputStream.close();
+            } finally {
+                try {
+                    outputStream.close();
+                } finally {
+                    socket = null;
+                    dsocket = null;
+                    if (closedConsumer != null) closedConsumer.accept(this);
+                }
+            }
         }
     }
 
@@ -411,6 +588,50 @@ public class NetMarshalClient implements Closeable {
                 synchronized (slockReceive) {
                     receivedPackets.add(packet);
                     slockReceive.notify();
+                }
+            }
+        } catch (InterruptedException | InterruptedIOException e) {
+        } catch (PacketException | IOException e) {
+            if (receiveExceptionBiConsumer != null) receiveExceptionBiConsumer.accept(e, this);
+            try {
+                close();
+            } catch (IOException ex) {
+                if (receiveExceptionBiConsumer != null) receiveExceptionBiConsumer.accept(ex, this);
+            }
+        }
+    }
+
+    protected void receiveThreadExecutedWithFragmentation() {
+        try {
+            synchronized (slockPacketRead) {
+                while (disablePacketReading) slockPacketRead.wait();
+            }
+            IPacket packet = loader.readStreamedPacket(inputStream, factory, null);
+            synchronized (slockPacketRead) {
+                if (packet == null || !packet.isValid()) return;
+                updateMState(fragmentRMM, packet);
+                boolean packetUsed = fragmentReceiver.receivePacket(packet);
+                updateMState(fragmentSMM, packet);
+                packetUsed = fragmentSender.receivePacket(packet) || packetUsed;
+                if (packetUsed) {
+                    while (fragmentReceiver.arePacketsWaiting()) {
+                        packet = fragmentReceiver.receivePacketPolling();
+                        if (packet == null || !packet.isValid()) continue;
+                        if (receiveBiConsumer != null) receiveBiConsumer.accept(packet, this);
+                        synchronized (slockReceive) {
+                            receivedPackets.add(packet);
+                            slockReceive.notify();
+                        }
+                    }
+                    synchronized ((socket == null) ? dsocket : socket) {
+                        sendFragmentData();
+                    }
+                } else {
+                    if (receiveBiConsumer != null) receiveBiConsumer.accept(packet, this);
+                    synchronized (slockReceive) {
+                        receivedPackets.add(packet);
+                        slockReceive.notify();
+                    }
                 }
             }
         } catch (InterruptedException | InterruptedIOException e) {
