@@ -295,6 +295,34 @@ public class NetMarshalClient implements Closeable {
     }
 
     /**
+     * Gets the packet factory in use.
+     *
+     * @return The packet factory.
+     */
+    public IPacketFactory getPacketFactory() {
+        return factory;
+    }
+
+    /**
+     * Gets the packet loader in use.
+     *
+     * @return The packet loader.
+     */
+    public PacketLoader getPacketLoader() {
+        return loader;
+    }
+
+    /**
+     * Clears the fragment storage registries if fragmentation is enabled.
+     * WARNING: Use of this method is not recommended.
+     */
+    public synchronized final void clearFragmentStorage() {
+        if (fragmentationOptions == null) return;
+        fragmentReceiver.clearRegistry();
+        fragmentSender.clearRegistry();
+    }
+
+    /**
      * Get the local {@link InetAddress}.
      *
      * @return The local address or null.
@@ -380,6 +408,18 @@ public class NetMarshalClient implements Closeable {
     }
 
     /**
+     * Flushes the output streams.
+     *
+     * @throws IOException A stream exception has occurred.
+     */
+    public synchronized final void flush() throws IOException {
+        synchronized ((socket == null) ? dsocket : socket) {
+            outputStream.flush();
+            rootOutputStream.flush();
+        }
+    }
+
+    /**
      * Gets if there are received {@link IPacket}s.
      *
      * @return If there are received packets.
@@ -399,6 +439,17 @@ public class NetMarshalClient implements Closeable {
     public IPacket receivePacket() throws InterruptedException {
         synchronized (slockReceive) {
             while (receivedPackets.size() < 1) slockReceive.wait();
+            return receivedPackets.poll();
+        }
+    }
+
+    /**
+     * Receives a {@link IPacket} polled.
+     *
+     * @return The received packet.
+     */
+    public IPacket receivePacketPolled() {
+        synchronized (slockReceive) {
             return receivedPackets.poll();
         }
     }

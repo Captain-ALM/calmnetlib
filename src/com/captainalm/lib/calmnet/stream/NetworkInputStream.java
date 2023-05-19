@@ -87,6 +87,77 @@ public class NetworkInputStream extends InputStream {
     }
 
     /**
+     * Reads a single datagram packet.
+     *
+     * @return A byte array of the single datagram packet.
+     * @throws IOException if an I/O error occurs, stream closed or not using a datagram socket.
+     */
+    public byte[] readPacket() throws IOException {
+        if (closed) throw new IOException("stream closed");
+        if (dsocket == null) throw new IOException("not using a datagram socket");
+        assureDSocketPacket();
+        if (dsocketPacket == null) {
+            return new byte[0];
+        } else {
+            byte[] toret = new byte[dlen-dsocketPacketIndex];
+            System.arraycopy(dsocketPacket.getData(), dsocketPacketIndex, toret, 0, toret.length);
+            dsocketPacket = null;
+            return toret;
+        }
+    }
+
+    /**
+     * Reads a single datagram packet into the specified buffer storing with no offset.
+     *
+     * @param b The buffer to store the packet in.
+     * @return The number of bytes stored or -1 for end of stream.
+     * @throws NullPointerException b is null.
+     * @throws IOException if an I/O error occurs, stream closed or not using a datagram socket.
+     */
+    public int readPacket(byte[] b) throws IOException {
+        return read(b, 0, b.length);
+    }
+
+    /**
+     * Reads a single datagram packet into the specified buffer
+     * storing from the specified offset and the specified number of bytes.
+     *
+     * @param b The buffer to store the packet in.
+     * @param off The offset to store in the buffer from.
+     * @param len The number of bytes to store in the buffer.
+     * @return The number of bytes stored or -1 for end of stream.
+     * @throws NullPointerException b is null.
+     * @throws IndexOutOfBoundsException if off is negative, len is negative, or len is greater than the difference of the length of the buffer and off.
+     * @throws IOException if an I/O error occurs, stream closed or not using a datagram socket.
+     */
+    public int readPacket(byte[] b, int off, int len) throws IOException {
+        if (closed) throw new IOException("stream closed");
+        if (dsocket == null) throw new IOException("not using a datagram socket");
+        if (b == null) throw new NullPointerException();
+        if (off < 0 || len < 0 || len > b.length - off) throw new IndexOutOfBoundsException();
+        if (len == 0) return 0;
+        assureDSocketPacket();
+        if (dsocketPacket == null) return -1;
+        int rlen = Math.min(len, dlen-dsocketPacketIndex);
+        System.arraycopy(dsocketPacket.getData(), dsocketPacketIndex, b, off, rlen);
+        dsocketPacketIndex += rlen;
+        if (dsocketPacketIndex >= dlen) dsocketPacket = null;
+        return rlen;
+    }
+
+    /**
+     * Gets the current datagram packet size.
+     *
+     * @return The datagram packet size.
+     * @throws IOException stream closed or not using a datagram socket.
+     */
+    public int getPacketSize() throws IOException {
+        if (closed) throw new IOException("stream closed");
+        if (dsocket == null) throw new IOException("not using a datagram socket");
+        return dlen;
+    }
+
+    /**
      * Gets the current {@link InetAddress} of the stream.
      * Can be null.
      *

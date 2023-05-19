@@ -5,7 +5,7 @@ import com.captainalm.lib.calmnet.packet.fragment.FragmentSender;
 
 /**
  * This class provides fragmentation options for using {@link FragmentSender}s and
- * {@link  FragmentReceiver}s in this package.
+ * {@link FragmentReceiver}s in this package.
  *
  * @author Captain ALM
  */
