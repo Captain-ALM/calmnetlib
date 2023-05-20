@@ -35,6 +35,7 @@ public class NetMarshalServer implements Closeable {
     protected BiConsumer<IPacket, NetMarshalClient> receiveBiConsumer;
     protected BiConsumer<Exception, NetMarshalClient> receiveExceptionBiConsumer;
     protected BiConsumer<Exception, NetMarshalServer> acceptExceptionBiConsumer;
+    protected Consumer<NetMarshalClient> openedConsumer;
     protected Consumer<NetMarshalClient> closedConsumer;
     protected BiConsumer<CandidateClient, NetMarshalServer> acceptanceBiConsumer;
     protected BiConsumer<Socket, NetMarshalServer> socketSetupBiConsumer;
@@ -286,7 +287,7 @@ public class NetMarshalServer implements Closeable {
     /**
      * Gets the {@link Consumer} closed consumer.
      *
-     * @return The closed or null.
+     * @return The closed consumer or null.
      */
     public Consumer<NetMarshalClient> getClosedConsumer() {
         return closedConsumer;
@@ -301,6 +302,26 @@ public class NetMarshalServer implements Closeable {
     public void setClosedConsumer(Consumer<NetMarshalClient> consumer) {
         if (consumer == null) throw new NullPointerException("consumer is null");
         closedConsumer = consumer;
+    }
+
+    /**
+     * Gets the {@link Consumer} opened consumer.
+     *
+     * @return The opened consumer or null.
+     */
+    public Consumer<NetMarshalClient> getOpenedConsumer() {
+        return openedConsumer;
+    }
+
+    /**
+     * Sets the {@link Consumer} opened consumer.
+     *
+     * @param consumer The new opened consumer.
+     * @throws NullPointerException consumer is null.
+     */
+    public void setOpenedConsumer(Consumer<NetMarshalClient> consumer) {
+        if (consumer == null) throw new NullPointerException("consumer is null");
+        openedConsumer = consumer;
     }
 
     /**
@@ -418,6 +439,7 @@ public class NetMarshalServer implements Closeable {
                 }
             }
             found.open();
+            if (openedConsumer != null) openedConsumer.accept(found);
             return found;
         }
         return null;
@@ -485,6 +507,7 @@ public class NetMarshalServer implements Closeable {
                         clients.add(client);
                     }
                     client.open();
+                    if (openedConsumer != null) openedConsumer.accept(client);
                 } else {
                     clientSocket.close();
                 }
@@ -527,6 +550,7 @@ public class NetMarshalServer implements Closeable {
                                 applyClientEvents(client);
                                 clients.add(client);
                                 client.open();
+                                if (openedConsumer != null) openedConsumer.accept(client);
                             }
                         } catch (Exception e) {
                             synchronized (slockOutputs) {

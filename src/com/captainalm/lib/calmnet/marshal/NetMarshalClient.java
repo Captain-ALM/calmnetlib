@@ -583,7 +583,7 @@ public class NetMarshalClient implements Closeable {
     /**
      * Gets the {@link Consumer} closed consumer.
      *
-     * @return The closed or null.
+     * @return The closed consumer or null.
      */
     public Consumer<NetMarshalClient> getClosedConsumer() {
         return closedConsumer;
