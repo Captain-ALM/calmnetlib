@@ -441,7 +441,7 @@ public class NetMarshalClient implements Closeable {
      */
     public IPacket receivePacket() throws InterruptedException {
         synchronized (slockReceive) {
-            while (receivedPackets.size() < 1) slockReceive.wait();
+            while (running && receivedPackets.size() < 1) slockReceive.wait();
             return receivedPackets.poll();
         }
     }
@@ -616,6 +616,9 @@ public class NetMarshalClient implements Closeable {
                 fragmentFinishSendMonitorThread.interrupt();
             }
             receivedPackets.clear();
+            synchronized (slockReceive) {
+                slockReceive.notifyAll();
+            }
             try {
                 inputStream.close();
             } finally {
