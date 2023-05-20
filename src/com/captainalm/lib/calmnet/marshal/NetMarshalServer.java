@@ -108,7 +108,7 @@ public class NetMarshalServer implements Closeable {
      * @throws IllegalArgumentException Fragmentation options failed validation.
      */
     public NetMarshalServer(DatagramSocket socketIn, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions) {
-        this((socketIn == null) ? null : socketIn.getInetAddress(), (socketIn == null) ? -1 : socketIn.getLocalPort(), factory, loader, socketIn == null, fragmentationOptions, socketIn);
+        this((socketIn == null) ? null : socketIn.getLocalAddress(), (socketIn == null) ? -1 : socketIn.getLocalPort(), factory, loader, socketIn == null, fragmentationOptions, socketIn);
         dsocket = socketIn;
     }
 
