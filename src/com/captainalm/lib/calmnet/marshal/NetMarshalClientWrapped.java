@@ -90,8 +90,10 @@ public class NetMarshalClientWrapped extends NetMarshalClient {
     protected void setupWrappers(Function<InputStream, InputStream> inputStreamWrapper, Function<OutputStream, OutputStream> outputStreamWrapper) {
         wrapperInputStream = inputStreamWrapper;
         if (wrapperInputStream != null) inputStream = wrapperInputStream.apply(rootInputStream);
+        if (inputStream == null) inputStream = rootInputStream;
         wrapperOutputStream = outputStreamWrapper;
         if (wrapperOutputStream != null) outputStream = wrapperOutputStream.apply(rootOutputStream);
+        if (outputStream == null) outputStream = rootOutputStream;
     }
 
     /**
