@@ -38,7 +38,6 @@ public class NetMarshalServer implements Closeable {
     protected Consumer<NetMarshalClient> closedConsumer;
     protected BiConsumer<CandidateClient, NetMarshalServer> acceptanceBiConsumer;
     protected BiConsumer<Socket, NetMarshalServer> socketSetupBiConsumer;
-    protected BiConsumer<DatagramSocket, NetMarshalServer> dSocketSetupBiConsumer;
 
     protected final Thread acceptThread;
 
@@ -224,6 +223,128 @@ public class NetMarshalServer implements Closeable {
         disconnectAllInternal();
     }
 
+    /**
+     * Gets the {@link BiConsumer} receiver consumer.
+     *
+     * @return The receiver consumer or null.
+     */
+    public BiConsumer<IPacket, NetMarshalClient> getReceiveBiConsumer() {
+        return receiveBiConsumer;
+    }
+
+    /**
+     * Sets the {@link BiConsumer} receiver consumer.
+     *
+     * @param consumer The new receiver consumer.
+     * @throws NullPointerException consumer is null.
+     */
+    public void setReceiveBiConsumer(BiConsumer<IPacket, NetMarshalClient> consumer) {
+        if (consumer == null) throw new NullPointerException("consumer is null");
+        receiveBiConsumer = consumer;
+    }
+
+    /**
+     * Gets the {@link BiConsumer} receive exception consumer.
+     *
+     * @return The exception consumer or null.
+     */
+    public BiConsumer<Exception, NetMarshalClient> getReceiveExceptionBiConsumer() {
+        return receiveExceptionBiConsumer;
+    }
+
+    /**
+     * Sets the {@link BiConsumer} receive exception consumer.
+     *
+     * @param consumer The new exception consumer.
+     * @throws NullPointerException consumer is null.
+     */
+    public void setReceiveExceptionBiConsumer(BiConsumer<Exception, NetMarshalClient> consumer) {
+        if (consumer == null) throw new NullPointerException("consumer is null");
+        receiveExceptionBiConsumer = consumer;
+    }
+
+    /**
+     * Gets the {@link BiConsumer} accept exception consumer.
+     *
+     * @return The exception consumer or null.
+     */
+    public BiConsumer<Exception, NetMarshalServer> getAcceptExceptionBiConsumer() {
+        return acceptExceptionBiConsumer;
+    }
+
+    /**
+     * Sets the {@link BiConsumer} accept exception consumer.
+     *
+     * @param consumer The new exception consumer.
+     * @throws NullPointerException consumer is null.
+     */
+    public void setAcceptExceptionBiConsumer(BiConsumer<Exception, NetMarshalServer> consumer) {
+        if (consumer == null) throw new NullPointerException("consumer is null");
+        acceptExceptionBiConsumer = consumer;
+    }
+
+    /**
+     * Gets the {@link Consumer} closed consumer.
+     *
+     * @return The closed or null.
+     */
+    public Consumer<NetMarshalClient> getClosedConsumer() {
+        return closedConsumer;
+    }
+
+    /**
+     * Sets the {@link Consumer} closed consumer.
+     *
+     * @param consumer The new closed consumer.
+     * @throws NullPointerException consumer is null.
+     */
+    public void setClosedConsumer(Consumer<NetMarshalClient> consumer) {
+        if (consumer == null) throw new NullPointerException("consumer is null");
+        closedConsumer = consumer;
+    }
+
+    /**
+     * Gets the {@link BiConsumer} client acceptance consumer.
+     * Use {@link CandidateClient#accept} to declare whether the candidate should be accepted.
+     *
+     * @return The acceptance consumer or null.
+     */
+    public BiConsumer<CandidateClient, NetMarshalServer> getClientAcceptanceBiConsumer() {
+        return acceptanceBiConsumer;
+    }
+
+    /**
+     * Sets the {@link BiConsumer} client acceptance consumer.
+     * Use {@link CandidateClient#accept} to declare whether the candidate should be accepted.
+     *
+     * @param consumer The new acceptance consumer.
+     * @throws NullPointerException consumer is null.
+     */
+    public void setClientAcceptanceBiConsumer(BiConsumer<CandidateClient, NetMarshalServer> consumer) {
+        if (consumer == null) throw new NullPointerException("consumer is null");
+        acceptanceBiConsumer = consumer;
+    }
+
+    /**
+     * Gets the {@link BiConsumer} socket setup consumer.
+     *
+     * @return The setup consumer or null.
+     */
+    public BiConsumer<Socket, NetMarshalServer> getSocketSetupBiConsumer() {
+        return socketSetupBiConsumer;
+    }
+
+    /**
+     * Sets the {@link BiConsumer} socket setup consumer.
+     *
+     * @param consumer The new setup consumer.
+     * @throws NullPointerException consumer is null.
+     */
+    public void setSocketSetupBiConsumer(BiConsumer<Socket, NetMarshalServer> consumer) {
+        if (consumer == null) throw new NullPointerException("consumer is null");
+        socketSetupBiConsumer = consumer;
+    }
+
     private void disconnectAllInternal() throws IOException {
         synchronized (slocksock) {
             for (NetMarshalClient c : clients)
@@ -279,6 +400,7 @@ public class NetMarshalServer implements Closeable {
                     } else {
                         Socket clientSocket = new Socket();
                         clientSocket.connect(new InetSocketAddress(remoteAddress, remotePort), timeout);
+                        if (socketSetupBiConsumer != null) socketSetupBiConsumer.accept(clientSocket, this);
                         found = generateClientSocket(clientSocket);
                     }
                     try {
@@ -352,6 +474,7 @@ public class NetMarshalServer implements Closeable {
     protected void acceptThreadExecutedSocket() {
         try {
             Socket clientSocket = socket.accept();
+            if (socketSetupBiConsumer != null) socketSetupBiConsumer.accept(clientSocket, this);
             CandidateClient candidateClient = new CandidateClient(clientSocket.getInetAddress(), clientSocket.getPort());
             try {
                 if (acceptanceBiConsumer != null) acceptanceBiConsumer.accept(candidateClient, this);
