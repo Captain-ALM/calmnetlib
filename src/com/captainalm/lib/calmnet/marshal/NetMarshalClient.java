@@ -121,6 +121,8 @@ public class NetMarshalClient implements Closeable {
                 }
                 fragmentReceiver.clearRegistry();
                 fragmentSender.clearRegistry();
+                fragmentRMM.clear();
+                fragmentSMM.clear();
             }, "thread_frag_monitor_" + remoteAddress.getHostAddress() + ":" + remotePort);
             fragmentFinishReceiveMonitorThread = new Thread(() -> {
                 while (running) {
@@ -145,7 +147,7 @@ public class NetMarshalClient implements Closeable {
                     }
                 }
                 fragmentSender.clearLastIDFinished();
-            }, "thread_frag_fin_recv_monitor_" + remoteAddress.getHostAddress() + ":" + remotePort);
+            }, "thread_frag_fin_send_monitor_" + remoteAddress.getHostAddress() + ":" + remotePort);
             receiveThread = new Thread(() -> {
                 while (running) receiveThreadExecutedWithFragmentation();
                 fragmentReceiver.clearWaitingPackets();
