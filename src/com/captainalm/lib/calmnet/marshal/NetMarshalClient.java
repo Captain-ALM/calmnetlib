@@ -405,8 +405,8 @@ public class NetMarshalClient implements Closeable {
                 loader.writePacket(outputStream, packetIn, true);
             } else {
                 fragmentSender.sendPacket(packetIn);
+                sendFragmentData();
             }
-            if (fragmentationOptions != null) sendFragmentData();
         }
     }
 
