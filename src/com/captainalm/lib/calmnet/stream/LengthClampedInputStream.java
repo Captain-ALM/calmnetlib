@@ -130,4 +130,17 @@ public class LengthClampedInputStream extends FilterInputStream {
         if (!closed) closed = true;
         super.close();
     }
+
+    /**
+     * Sets a new clamped length value.
+     * This is the maximum number of bytes that can be read from the stream.
+     *
+     * @param clampedLength The new clamped length value.
+     * @throws IllegalArgumentException clampedLength is less than 0.
+     */
+    public synchronized void setClampedLength(int clampedLength) {
+        if (clampedLength < 0) throw new IllegalArgumentException("clampedLength is less than 0");
+        if (closed) return;
+        this.clampedLength = clampedLength;
+    }
 }
