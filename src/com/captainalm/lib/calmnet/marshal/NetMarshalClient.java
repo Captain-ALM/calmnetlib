@@ -33,6 +33,7 @@ import java.util.function.Consumer;
 public class NetMarshalClient implements Closeable {
     protected boolean running;
 
+    protected final Object slocksock = new Object();
     protected Socket socket;
     protected DatagramSocket dsocket;
     protected InputStream inputStream;
@@ -75,7 +76,7 @@ public class NetMarshalClient implements Closeable {
         this.factory = factory;
         if (loader == null) throw new NullPointerException("loader is null");
         this.loader = loader;
-        this.fragmentationOptions = fragmentationOptions;
+        this.fragmentationOptions = (fragmentationOptions == null) ? null : new FragmentationOptions(fragmentationOptions);
         if (fragmentationOptions == null) {
             fragmentReceiver = null;
             fragmentRMM = null;
@@ -397,7 +398,7 @@ public class NetMarshalClient implements Closeable {
      */
     public synchronized final void sendPacket(IPacket packetIn, boolean directSend) throws IOException, PacketException {
         if (packetIn == null) throw new NullPointerException("packetIn is null");
-        synchronized ((socket == null) ? dsocket : socket) {
+        synchronized (slocksock) {
             if (fragmentationOptions == null || directSend) {
                 loader.writePacket(outputStream, packetIn, true);
             } else {
@@ -413,7 +414,7 @@ public class NetMarshalClient implements Closeable {
      * @throws IOException A stream exception has occurred.
      */
     public synchronized final void flush() throws IOException {
-        synchronized ((socket == null) ? dsocket : socket) {
+        synchronized (slocksock) {
             outputStream.flush();
             rootOutputStream.flush();
         }
@@ -516,8 +517,8 @@ public class NetMarshalClient implements Closeable {
         if (context == null) throw new NullPointerException("context is null");
         if (!disablePacketReading && Thread.currentThread() != receiveThread) throw new IllegalStateException("sslUpgrade methods should be called in a BiConsumer (for setReceiveBiConsumer) within the target NetMarshalClient" +
                 " or when reading packets (arePacketsBeingRead) is disabled on the NetMarshalClient");
-        Socket originalSocket = socket;
-        synchronized (originalSocket) {
+        synchronized (slocksock) {
+            Socket originalSocket = socket;
             try {
                 socket = SSLUtilities.upgradeClientSocketToSSL(context, socket, remoteHostName, socket.getPort(), true, remoteHostName != null);
                 if (rootInputStream instanceof NetworkInputStream) ((NetworkInputStream) rootInputStream).setSocket(socket);
@@ -642,7 +643,7 @@ public class NetMarshalClient implements Closeable {
                 }
             }
         } catch (InterruptedException | InterruptedIOException e) {
-        } catch (PacketException | IOException e) {
+        } catch (Exception e) {
             if (receiveExceptionBiConsumer != null) receiveExceptionBiConsumer.accept(e, this);
             try {
                 close();
@@ -674,7 +675,7 @@ public class NetMarshalClient implements Closeable {
                             slockReceive.notify();
                         }
                     }
-                    synchronized ((socket == null) ? dsocket : socket) {
+                    synchronized (slocksock) {
                         sendFragmentData();
                     }
                 } else {
@@ -686,7 +687,7 @@ public class NetMarshalClient implements Closeable {
                 }
             }
         } catch (InterruptedException | InterruptedIOException e) {
-        } catch (PacketException | IOException e) {
+        } catch (Exception e) {
             if (receiveExceptionBiConsumer != null) receiveExceptionBiConsumer.accept(e, this);
             try {
                 close();

@@ -37,6 +37,23 @@ public final class FragmentationOptions {
      */
     public boolean equalityVerifyFragments = false;
 
+    public FragmentationOptions() {}
+
+    /**
+     * Creates a copy of the provided FragmentationOptions.
+     *
+     * @param toCopy The options to copy.
+     * @throws NullPointerException toCopy is null.
+     */
+    public FragmentationOptions(FragmentationOptions toCopy) {
+        if (toCopy == null) throw new NullPointerException("toCopy is null");
+        maximumFragmentAge = toCopy.maximumFragmentAge;
+        fragmentationSplitSize = toCopy.fragmentationSplitSize;
+        emptySendsTillForced = toCopy.emptySendsTillForced;
+        verifyFragments = toCopy.verifyFragments;
+        equalityVerifyFragments = toCopy.equalityVerifyFragments;
+    }
+
     /**
      * Validates the parameters within this structure.
      *

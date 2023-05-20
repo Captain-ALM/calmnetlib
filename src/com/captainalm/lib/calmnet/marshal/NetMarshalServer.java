@@ -6,13 +6,8 @@ import com.captainalm.lib.calmnet.packet.PacketLoader;
 import com.captainalm.lib.calmnet.packet.factory.IPacketFactory;
 import com.captainalm.lib.calmnet.stream.NetworkInputStream;
 
-import java.io.Closeable;
-import java.io.IOException;
-import java.io.PipedOutputStream;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.io.*;
+import java.net.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -29,10 +24,12 @@ import java.util.function.Consumer;
 public class NetMarshalServer implements Closeable {
     protected boolean running;
 
+    protected final Object slocksock = new Object();
     protected ServerSocket socket;
     protected DatagramSocket dsocket;
     protected final NetworkInputStream dInputStream;
-    protected final Map<NetMarshalClient, PipedOutputStream> outputs;
+    protected final Map<CandidateClient, PipedOutputStream> outputs;
+    protected final Object slockOutputs;
     protected final List<NetMarshalClient> clients = new ArrayList<>();
 
     protected BiConsumer<IPacket, NetMarshalClient> receiveBiConsumer;
@@ -62,17 +59,23 @@ public class NetMarshalServer implements Closeable {
         this.factory = factory;
         if (loader == null) throw new NullPointerException("loader is null");
         this.loader = loader;
-        this.fragmentationOptions = fragmentationOptions;
-        if (fragmentationOptions != null) fragmentationOptions.validate();
+        if (fragmentationOptions == null) {
+            this.fragmentationOptions = null;
+        } else {
+            this.fragmentationOptions = new FragmentationOptions(fragmentationOptions);
+            this.fragmentationOptions.validate();
+        }
         if (dsock == null) {
             dInputStream = null;
             outputs = null;
+            slockOutputs = null;
             acceptThread = new Thread(() -> {
                 while (running) acceptThreadExecutedSocket();
             }, "thread_accept_" + localAddress.getHostAddress() + ":" + localPort);
         } else {
             dInputStream = new NetworkInputStream(dsock);
             outputs = new HashMap<>();
+            slockOutputs = new Object();
             acceptThread = new Thread(() -> {
                 while (running) acceptThreadExecutedDSocket();
             }, "thread_accept_" + localAddress.getHostAddress() + ":" + localPort);
@@ -178,7 +181,7 @@ public class NetMarshalServer implements Closeable {
      * @return An array of connected clients.
      */
     public synchronized final NetMarshalClient[] getConnectedClients() {
-        synchronized ((socket == null) ? dsocket : socket) {
+        synchronized (slocksock) {
             return clients.toArray(new NetMarshalClient[0]);
         }
     }
@@ -194,7 +197,7 @@ public class NetMarshalServer implements Closeable {
      */
     public synchronized final void broadcastPacket(IPacket packetIn, boolean directSend) throws IOException, PacketException {
         if (packetIn == null) throw new NullPointerException("packetIn is null");
-        synchronized ((socket == null) ? dsocket : socket) {
+        synchronized (slocksock) {
             for (NetMarshalClient c : clients)
                 if (c.isRunning()) c.sendPacket(packetIn, directSend);
         }
@@ -206,7 +209,7 @@ public class NetMarshalServer implements Closeable {
      * @throws IOException A stream exception has occurred.
      */
     public synchronized final void flush() throws IOException {
-        synchronized ((socket == null) ? dsocket : socket) {
+        synchronized (slocksock) {
             for (NetMarshalClient c : clients)
                 if (c.isRunning()) c.flush();
         }
@@ -222,10 +225,24 @@ public class NetMarshalServer implements Closeable {
     }
 
     private void disconnectAllInternal() throws IOException {
-        synchronized ((socket == null) ? dsocket : socket) {
+        synchronized (slocksock) {
             for (NetMarshalClient c : clients)
                 if (c.isRunning()) c.close();
         }
+    }
+
+    protected NetMarshalClient generateClientSocket(Socket socketIn) {
+        return new NetMarshalClient(socketIn, factory, loader, fragmentationOptions);
+    }
+
+    protected NetMarshalClient generateClientDSocket(CandidateClient candidate,PipedInputStream inputStream) {
+        return new NetMarshalClient(dsocket, candidate.address, candidate.port, inputStream, factory, loader, fragmentationOptions);
+    }
+
+    protected void applyClientEvents(NetMarshalClient client) {
+        client.setReceiveBiConsumer(this::onClientReceive);
+        client.setReceiveExceptionBiConsumer(this::onClientReceiveException);
+        client.setClosedConsumer(this::onClientClose);
     }
 
     /**
@@ -233,10 +250,54 @@ public class NetMarshalServer implements Closeable {
      *
      * @param remoteAddress The remote address to connect to.
      * @param remotePort The remote port to connect to.
+     * @param timeout The timeout of the connection attempt (0 for infinite timeout).
      * @return A NetMarshalClient instance or null for non-accepted connection.
      * @throws IOException A connection error has occurred.
      */
-    public synchronized final NetMarshalClient connect(InetAddress remoteAddress, int remotePort) throws IOException {
+    public synchronized final NetMarshalClient connect(InetAddress remoteAddress, int remotePort, int timeout) throws IOException {
+        if (remoteAddress == null) throw new NullPointerException("remoteAddress is null");
+        if (remotePort < 0) throw new IllegalArgumentException("remotePort is less than 0");
+        if (remotePort > 65535) throw new IllegalArgumentException("remotePort is greater than 65535");
+        CandidateClient candidateClient = new CandidateClient(remoteAddress, remotePort);
+        if (acceptanceBiConsumer != null) acceptanceBiConsumer.accept(candidateClient, this);
+        if (candidateClient.accept) {
+            NetMarshalClient found = null;
+            synchronized (slocksock) {
+                for (NetMarshalClient c : clients)
+                    if (candidateClient.matchesNetMarshalClient(c)) {
+                        found = c;
+                        break;
+                    }
+                if (found == null) {
+                    if (socket == null) {
+                        PipedInputStream inputPipe = new PipedInputStream(65535);
+                        PipedOutputStream outputPipe = new PipedOutputStream(inputPipe);
+                        found = generateClientDSocket(candidateClient, inputPipe);
+                        synchronized (slockOutputs) {
+                            outputs.put(candidateClient, outputPipe);
+                        }
+                    } else {
+                        Socket clientSocket = new Socket();
+                        clientSocket.connect(new InetSocketAddress(remoteAddress, remotePort), timeout);
+                        found = generateClientSocket(clientSocket);
+                    }
+                    try {
+                        applyClientEvents(found);
+                        clients.add(found);
+                    } catch (Exception e) {
+                        clients.remove(found);
+                        if (socket == null) {
+                            synchronized (slockOutputs) {
+                                outputs.remove(new CandidateClient(found.remoteAddress(), found.remotePort()));
+                            }
+                        }
+                        throw e;
+                    }
+                }
+            }
+            found.open();
+            return found;
+        }
         return null;
     }
 
@@ -259,11 +320,108 @@ public class NetMarshalServer implements Closeable {
         }
     }
 
-    protected void acceptThreadExecutedSocket() {
+    protected void onClientReceive(IPacket packet, NetMarshalClient client) {
+        if (receiveBiConsumer != null) receiveBiConsumer.accept(packet, client);
+    }
 
+    protected void onClientReceiveException(Exception e, NetMarshalClient client) {
+        if (receiveExceptionBiConsumer != null) receiveExceptionBiConsumer.accept(e, client);
+    }
+
+    protected void onClientClose(NetMarshalClient closed) {
+        synchronized (slocksock) {
+            clients.remove(closed);
+            if (socket == null) {
+                CandidateClient candidate = new CandidateClient(closed.remoteAddress(), closed.remotePort());
+                synchronized (slockOutputs) {
+                    PipedOutputStream outputPipe = outputs.get(candidate);
+                    if (outputPipe != null) {
+                        try {
+                            outputPipe.close();
+                        } catch (IOException e) {
+                            onClientReceiveException(e, closed);
+                        }
+                    }
+                    outputs.remove(candidate);
+                }
+            }
+        }
+        if (closedConsumer != null) closedConsumer.accept(closed);
+    }
+
+    protected void acceptThreadExecutedSocket() {
+        try {
+            Socket clientSocket = socket.accept();
+            CandidateClient candidateClient = new CandidateClient(clientSocket.getInetAddress(), clientSocket.getPort());
+            try {
+                if (acceptanceBiConsumer != null) acceptanceBiConsumer.accept(candidateClient, this);
+                if (candidateClient.accept) {
+                    NetMarshalClient client = generateClientSocket(clientSocket);
+                    applyClientEvents(client);
+                    synchronized (slocksock) {
+                        clients.add(client);
+                    }
+                    client.open();
+                } else {
+                    clientSocket.close();
+                }
+            } catch (Exception e) {
+                clientSocket.close();
+                throw e;
+            }
+        } catch (InterruptedIOException e) {
+        } catch (Exception e) {
+            if (acceptExceptionBiConsumer != null) acceptExceptionBiConsumer.accept(e, this);
+        }
     }
 
     protected void acceptThreadExecutedDSocket() {
-
+        try {
+            byte[] dPacket = dInputStream.readPacket();
+            CandidateClient candidateClient = new CandidateClient(dInputStream.getAddress(), dInputStream.getPort());
+            PipedOutputStream outputPipe;
+            synchronized (slockOutputs) {
+                outputPipe = outputs.get(candidateClient);
+            }
+            if (outputPipe == null) {
+                synchronized (slocksock) {
+                    NetMarshalClient found = null;
+                    for (NetMarshalClient c : clients)
+                        if (candidateClient.matchesNetMarshalClient(c)) {
+                            found = c;
+                            break;
+                        }
+                    if (found == null) {
+                        try {
+                            if (acceptanceBiConsumer != null) acceptanceBiConsumer.accept(candidateClient, this);
+                            if (candidateClient.accept) {
+                                PipedInputStream inputPipe = new PipedInputStream(65535);
+                                outputPipe = new PipedOutputStream(inputPipe);
+                                synchronized (slockOutputs) {
+                                    outputs.put(candidateClient, outputPipe);
+                                }
+                                NetMarshalClient client = generateClientDSocket(candidateClient, inputPipe);
+                                applyClientEvents(client);
+                                clients.add(client);
+                                client.open();
+                            }
+                        } catch (Exception e) {
+                            synchronized (slockOutputs) {
+                                outputs.remove(candidateClient);
+                            }
+                            throw e;
+                        }
+                    } else {
+                        synchronized (slockOutputs) {
+                            outputPipe = outputs.get(candidateClient);
+                        }
+                    }
+                }
+            }
+            if (outputPipe != null) outputPipe.write(dPacket);
+        } catch (InterruptedIOException e) {
+        } catch (Exception e) {
+            if (acceptExceptionBiConsumer != null) acceptExceptionBiConsumer.accept(e, this);
+        }
     }
 }
