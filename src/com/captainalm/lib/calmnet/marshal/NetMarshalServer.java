@@ -367,10 +367,9 @@ public class NetMarshalServer implements Closeable {
     }
 
     private void disconnectAllInternal() throws IOException {
-        synchronized (slocksock) {
-            for (NetMarshalClient c : clients)
-                if (c.isRunning()) c.close();
-        }
+        NetMarshalClient[] clients = getConnectedClients();
+        for (NetMarshalClient c : clients)
+            if (c.isRunning()) c.close();
     }
 
     protected NetMarshalClient generateClientSocket(Socket socketIn) {
