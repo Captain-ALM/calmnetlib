@@ -162,7 +162,7 @@ public class NetMarshalServer implements Closeable {
      *
      * @return If the marshal is running.
      */
-    public synchronized final boolean isRunning() {
+    public final boolean isRunning() {
         return running;
     }
 
@@ -180,7 +180,7 @@ public class NetMarshalServer implements Closeable {
      *
      * @return An array of connected clients.
      */
-    public synchronized final NetMarshalClient[] getConnectedClients() {
+    public final NetMarshalClient[] getConnectedClients() {
         synchronized (slocksock) {
             return clients.toArray(new NetMarshalClient[0]);
         }
@@ -195,7 +195,7 @@ public class NetMarshalServer implements Closeable {
      * @throws PacketException An exception has occurred.
      * @throws NullPointerException packetIn is null.
      */
-    public synchronized final void broadcastPacket(IPacket packetIn, boolean directSend) throws IOException, PacketException {
+    public final void broadcastPacket(IPacket packetIn, boolean directSend) throws IOException, PacketException {
         if (packetIn == null) throw new NullPointerException("packetIn is null");
         synchronized (slocksock) {
             for (NetMarshalClient c : clients)
@@ -208,7 +208,7 @@ public class NetMarshalServer implements Closeable {
      *
      * @throws IOException A stream exception has occurred.
      */
-    public synchronized final void flush() throws IOException {
+    public final void flush() throws IOException {
         synchronized (slocksock) {
             for (NetMarshalClient c : clients)
                 if (c.isRunning()) c.flush();
@@ -220,7 +220,7 @@ public class NetMarshalServer implements Closeable {
      *
      * @throws IOException An I/O Exception has occurred.
      */
-    public synchronized final void disconnectAll() throws IOException {
+    public final void disconnectAll() throws IOException {
         disconnectAllInternal();
     }
 
@@ -396,7 +396,7 @@ public class NetMarshalServer implements Closeable {
      * @return A NetMarshalClient instance or null for non-accepted connection.
      * @throws IOException A connection error has occurred.
      */
-    public synchronized final NetMarshalClient connect(InetAddress remoteAddress, int remotePort, int timeout) throws IOException {
+    public final NetMarshalClient connect(InetAddress remoteAddress, int remotePort, int timeout) throws IOException {
         if (remoteAddress == null) throw new NullPointerException("remoteAddress is null");
         if (remotePort < 0) throw new IllegalArgumentException("remotePort is less than 0");
         if (remotePort > 65535) throw new IllegalArgumentException("remotePort is greater than 65535");

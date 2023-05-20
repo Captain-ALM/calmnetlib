@@ -319,7 +319,7 @@ public class NetMarshalClient implements Closeable {
      * Clears the fragment storage registries if fragmentation is enabled.
      * WARNING: Use of this method is not recommended.
      */
-    public synchronized final void clearFragmentStorage() {
+    public final void clearFragmentStorage() {
         if (fragmentationOptions == null) return;
         fragmentReceiver.clearRegistry();
         fragmentSender.clearRegistry();
@@ -366,7 +366,7 @@ public class NetMarshalClient implements Closeable {
      *
      * @return If the marshal is running.
      */
-    public synchronized final boolean isRunning() {
+    public final boolean isRunning() {
         return running;
     }
 
@@ -384,7 +384,7 @@ public class NetMarshalClient implements Closeable {
      *
      * @return Is the marshal ssl upgraded.
      */
-    public synchronized final boolean isSSLUpgraded() {
+    public final boolean isSSLUpgraded() {
         if (!running) return false;
         return socket instanceof SSLSocket;
     }
@@ -398,7 +398,7 @@ public class NetMarshalClient implements Closeable {
      * @throws PacketException An exception has occurred.
      * @throws NullPointerException packetIn is null.
      */
-    public synchronized final void sendPacket(IPacket packetIn, boolean directSend) throws IOException, PacketException {
+    public final void sendPacket(IPacket packetIn, boolean directSend) throws IOException, PacketException {
         if (packetIn == null) throw new NullPointerException("packetIn is null");
         synchronized (slocksock) {
             if (fragmentationOptions == null || directSend) {
@@ -415,7 +415,7 @@ public class NetMarshalClient implements Closeable {
      *
      * @throws IOException A stream exception has occurred.
      */
-    public synchronized final void flush() throws IOException {
+    public final void flush() throws IOException {
         synchronized (slocksock) {
             outputStream.flush();
             rootOutputStream.flush();
@@ -514,7 +514,7 @@ public class NetMarshalClient implements Closeable {
         sslUpgrade(context, remoteHostName);
     }
 
-    protected synchronized final void sslUpgrade(SSLContext context, String remoteHostName) throws SSLUtilityException, IOException {
+    protected final void sslUpgrade(SSLContext context, String remoteHostName) throws SSLUtilityException, IOException {
         if (!running || socket == null || socket instanceof SSLSocket) return;
         if (context == null) throw new NullPointerException("context is null");
         if (!disablePacketReading && Thread.currentThread() != receiveThread) throw new IllegalStateException("sslUpgrade methods should be called in a BiConsumer (for setReceiveBiConsumer) within the target NetMarshalClient" +
