@@ -30,6 +30,7 @@ public class Base64Packet implements IStreamedPacket {
 
     /**
      * Constructs a new Base64Packet with the specified {@link IPacketFactory} and {@link PacketLoader}.
+     * The encrypted data will not be cached.
      *
      * @param factory The packet factory to use.
      * @param loader The Packet Loader to use.
@@ -54,6 +55,7 @@ public class Base64Packet implements IStreamedPacket {
 
     /**
      * Constructs a new Base64Packet with the specified {@link IPacketFactory}, {@link PacketLoader} and {@link IPacket}.
+     * The encrypted data will not be cached.
      *
      * @param factory The packet factory to use.
      * @param loader The Packet Loader to use.
@@ -149,23 +151,13 @@ public class Base64Packet implements IStreamedPacket {
     public void loadPayload(byte[] packetData) throws PacketException {
         if (packetData == null) throw new NullPointerException("packetData is null");
         synchronized (slock) {
-            if (useCache) {
-                encryptedCache = packetData;
-                try {
-                    byte[] payload = Base64.getDecoder().decode(encryptedCache);
-                    held = loader.readPacketNoDigest(payload, factory, null);
-                } catch (IllegalArgumentException e) {
-                    encryptedCache = null;
-                    throw new PacketException(e);
-                }
-            } else {
-                try {
-                    byte[] payload = Base64.getDecoder().decode(packetData);
-                    held = loader.readPacketNoDigest(payload, factory, null);
-                } catch (IllegalArgumentException e) {
-                    throw new PacketException(e);
-                }
+            try {
+                byte[] payload = Base64.getDecoder().decode(packetData);
+                held = loader.readPacketNoDigest(payload, factory, null);
+            } catch (IllegalArgumentException e) {
+                throw new PacketException(e);
             }
+            if (useCache) encryptedCache = packetData;
         }
     }
 

@@ -24,6 +24,17 @@ import static com.captainalm.lib.calmnet.packet.PacketLoader.readByteFromInputSt
  * @author Captain ALM
  */
 public class EncryptedPacket implements IStreamedPacket {
+    /*
+     * Packet Format:
+     *
+     * Sections are seperated by spaces.
+     * {} is condition followed by () containing the sections caused by the condition.
+     * [] contains the length of the section.
+     *
+     * payload = trailerFlag[1] cypherSettingsLen[4] cypherSettings[cypherSettingsLen] {trailerFlag & 1}(trailerLength[4]) encrypted[*]
+     * encrypted = encrypt<toEncrypt>
+     * toEncrypt = data[*] {trailerFlag & 1}(trailer[trailerLength])
+     */
     private static final PacketProtocolInformation protocol = new PacketProtocolInformation((byte) 255, (byte) 252);
 
     protected final Object slock = new Object();
@@ -32,6 +43,7 @@ public class EncryptedPacket implements IStreamedPacket {
     protected IPacket held;
     protected byte[] encryptedCache;
     protected int trailingArrayLengthCache;
+    protected boolean useCache;
 
     protected Cipher cipher;
     protected ICipherFactory cipherFactory;
@@ -40,6 +52,7 @@ public class EncryptedPacket implements IStreamedPacket {
 
     /**
      * Constructs a new EncryptedPacket with the specified {@link IPacketFactory}, {@link PacketLoader} and {@link ICipherFactory}.
+     * The encrypted data will not be cached.
      *
      * @param factory The packet factory to use.
      * @param loader The Packet Loader to use.
@@ -47,11 +60,26 @@ public class EncryptedPacket implements IStreamedPacket {
      * @throws NullPointerException factory, loader or cipherFactory is null.
      */
     public EncryptedPacket(IPacketFactory factory, PacketLoader loader, ICipherFactory cipherFactory) {
-        this(factory, loader, cipherFactory, null);
+        this(factory, loader, cipherFactory, false);
+    }
+
+    /**
+     * Constructs a new EncryptedPacket with the specified {@link IPacketFactory}, {@link PacketLoader}, {@link ICipherFactory}
+     * and if the encrypted data should be cached.
+     *
+     * @param factory The packet factory to use.
+     * @param loader The Packet Loader to use.
+     * @param cipherFactory The cipher factory to use.
+     * @param useCache If the encrypted data should be cached.
+     * @throws NullPointerException factory, loader or cipherFactory is null.
+     */
+    public EncryptedPacket(IPacketFactory factory, PacketLoader loader, ICipherFactory cipherFactory, boolean useCache) {
+        this(factory, loader, cipherFactory, null, useCache);
     }
 
     /**
      * Constructs a new EncryptedPacket with the specified {@link IPacketFactory}, {@link PacketLoader}, {@link ICipherFactory} and {@link IPacket}.
+     * The encrypted data will not be cached.
      *
      * @param factory The packet factory to use.
      * @param loader The Packet Loader to use.
@@ -59,6 +87,20 @@ public class EncryptedPacket implements IStreamedPacket {
      * @throws NullPointerException factory, loader or cipherFactory is null.
      */
     public EncryptedPacket(IPacketFactory factory, PacketLoader loader, ICipherFactory cipherFactory, IPacket packet) {
+        this(factory, loader, cipherFactory, packet, false);
+    }
+
+    /**
+     * Constructs a new EncryptedPacket with the specified {@link IPacketFactory}, {@link PacketLoader}, {@link ICipherFactory},
+     * {@link IPacket} and if the encrypted data should be cached.
+     *
+     * @param factory The packet factory to use.
+     * @param loader The Packet Loader to use.
+     * @param cipherFactory The cipher factory to use.
+     * @param useCache If the encrypted data should be cached.
+     * @throws NullPointerException factory, loader or cipherFactory is null.
+     */
+    public EncryptedPacket(IPacketFactory factory, PacketLoader loader, ICipherFactory cipherFactory, IPacket packet, boolean useCache) {
         if (factory == null) throw new NullPointerException("factory is null");
         if (loader == null) throw new NullPointerException("loader is null");
         if (cipherFactory == null) throw new NullPointerException("cipherFactory is null");
@@ -66,6 +108,7 @@ public class EncryptedPacket implements IStreamedPacket {
         this.loader = loader;
         this.cipher = null;
         held = packet;
+        this.useCache = useCache;
     }
 
     protected void generateCipher(int opmode) throws PacketException {
@@ -177,6 +220,8 @@ public class EncryptedPacket implements IStreamedPacket {
 
             System.arraycopy(encryptedCache, 0, toret, index, encryptedCache.length);
 
+            if (!useCache) encryptedCache = null;
+
             return toret;
         }
     }
@@ -237,6 +282,8 @@ public class EncryptedPacket implements IStreamedPacket {
                 held = loader.readPacketNoDigest(thePacket, factory, null);
             } catch (BadPaddingException | IllegalBlockSizeException e) {
                 throw new PacketException(e);
+            } finally {
+                if (!useCache) encryptedCache = null;
             }
         }
     }
@@ -253,7 +300,16 @@ public class EncryptedPacket implements IStreamedPacket {
     public void readData(OutputStream outputStream) throws IOException, PacketException {
         if (outputStream == null) throw new NullPointerException("outputStream is null");
         synchronized (slock) {
-            processEncryptedCache();
+            byte[] trailingArray;
+            if (useCache) {
+                processEncryptedCache();
+                trailingArray = null;
+            } else {
+                if (held == null) throw new PacketException("no data");
+                generateCipher(Cipher.ENCRYPT_MODE);
+                trailingArray = (trailingPassword == null || trailingPassword.length() < 1) ? new byte[0] : trailingPassword.getBytes(StandardCharsets.UTF_8);
+                trailingArrayLengthCache = trailingArray.length;
+            }
 
             outputStream.write((trailingPassword != null && trailingPassword.length() > 0) ? 1 : 0);
 
@@ -265,7 +321,19 @@ public class EncryptedPacket implements IStreamedPacket {
 
             if (trailingArrayLengthCache > 0) PacketLoader.writeInteger(outputStream, trailingArrayLengthCache);
 
-            outputStream.write(encryptedCache);
+            if (useCache) {
+                outputStream.write(encryptedCache);
+            } else {
+                CipherOutputStream cipherOutputStream = new CipherOutputStream(outputStream, cipher);
+                loader.writePacketNoDigest(cipherOutputStream, held, true);
+                if (trailingArrayLengthCache > 0)
+                    cipherOutputStream.write(trailingArray);
+                try {
+                    outputStream.write(cipher.doFinal());
+                } catch (BadPaddingException | IllegalBlockSizeException e) {
+                    throw new PacketException(e);
+                }
+            }
         }
     }
 
@@ -331,6 +399,7 @@ public class EncryptedPacket implements IStreamedPacket {
                 cipher.doFinal();
             }
             catch (BadPaddingException | IllegalBlockSizeException e) {
+                throw new PacketException(e);
             }
         }
     }
@@ -344,8 +413,15 @@ public class EncryptedPacket implements IStreamedPacket {
     @Override
     public int getSize() throws PacketException {
         synchronized (slock) {
-            processEncryptedCache();
-            return  encryptedCache.length + 5 + cipherFactory.getSettingsNoSecretsLength() + ((trailingArrayLengthCache == 0) ? 0 : 4);
+            if (useCache) {
+                processEncryptedCache();
+                return encryptedCache.length + 5 + cipherFactory.getSettingsNoSecretsLength() + ((trailingArrayLengthCache == 0) ? 0 : 4);
+            } else {
+                if (held == null) throw new PacketException("no data");
+                generateCipher(Cipher.ENCRYPT_MODE);
+                trailingArrayLengthCache = (trailingPassword == null || trailingPassword.length() < 1) ? 0 : trailingPassword.getBytes(StandardCharsets.UTF_8).length;
+                return 5 + cipherFactory.getSettingsNoSecretsLength() + ((trailingArrayLengthCache == 0) ? 0 : 4) + cipher.getOutputSize(loader.getPacketSize(held, true, true) + trailingArrayLengthCache);
+            }
         }
     }
 
@@ -454,6 +530,28 @@ public class EncryptedPacket implements IStreamedPacket {
         synchronized (slock) {
             encryptedCache = null;
             held = packet;
+        }
+    }
+
+    /**
+     * Gets if the encrypted data is cached.
+     *
+     * @return If the encrypted data is cached.
+     */
+    public boolean isCacheUsed() {
+        return useCache;
+    }
+
+    /**
+     * Sets if the encrypted data is cached.
+     *
+     * @param used If the encrypted data should be cached.
+     */
+    public void setCacheUsed(boolean used) {
+        synchronized (slock) {
+            useCache = used;
+            if (!useCache)
+                encryptedCache = null;
         }
     }
 }
