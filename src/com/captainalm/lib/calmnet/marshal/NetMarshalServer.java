@@ -194,7 +194,6 @@ public class NetMarshalServer implements Closeable {
      * @throws IOException A stream exception has occurred.
      * @throws PacketException An exception has occurred.
      * @throws NullPointerException packetIn is null.
-     * @throws IllegalStateException sendPacket accessed in the receive thread.
      */
     public final void broadcastPacket(IPacket packetIn, boolean directSend) throws IOException, PacketException {
         if (packetIn == null) throw new NullPointerException("packetIn is null");
@@ -208,7 +207,6 @@ public class NetMarshalServer implements Closeable {
      * Flushes all the output streams on all the clients.
      *
      * @throws IOException A stream exception has occurred.
-     * @throws IllegalStateException flush accessed in the receive thread.
      */
     public final void flush() throws IOException {
         synchronized (slocksock) {
@@ -228,7 +226,7 @@ public class NetMarshalServer implements Closeable {
 
     /**
      * Gets the {@link BiConsumer} receiver consumer.
-     * WARNING: {@link #broadcastPacket(IPacket, boolean)} and {@link #flush()} cannot be called within the consumer.
+     * WARNING: Calling {@link #broadcastPacket(IPacket, boolean)} or {@link #flush()} could cause full buffer hangs.
      *
      * @return The receiver consumer or null.
      */
@@ -238,7 +236,7 @@ public class NetMarshalServer implements Closeable {
 
     /**
      * Sets the {@link BiConsumer} receiver consumer.
-     * WARNING: {@link #broadcastPacket(IPacket, boolean)} and {@link #flush()} cannot be called within the consumer.
+     * WARNING: Calling {@link #broadcastPacket(IPacket, boolean)} or {@link #flush()} could cause full buffer hangs.
      *
      * @param consumer The new receiver consumer.
      * @throws NullPointerException consumer is null.

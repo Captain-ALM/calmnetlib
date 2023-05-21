@@ -409,11 +409,9 @@ public class NetMarshalClient implements Closeable {
      * @throws IOException A stream exception has occurred.
      * @throws PacketException An exception has occurred.
      * @throws NullPointerException packetIn is null.
-     * @throws IllegalStateException sendPacket accessed in the receive thread.
      */
     public final void sendPacket(IPacket packetIn, boolean directSend) throws IOException, PacketException {
         if (packetIn == null) throw new NullPointerException("packetIn is null");
-        if (Thread.currentThread() == receiveThread) throw new IllegalStateException("sendPacket accessed in the receive thread");
         synchronized (slocksock) {
             if (fragmentationOptions == null || directSend) {
                 loader.writePacket(outputStream, packetIn, true);
@@ -428,10 +426,8 @@ public class NetMarshalClient implements Closeable {
      * Flushes the output streams.
      *
      * @throws IOException A stream exception has occurred.
-     * @throws IllegalStateException flush accessed in the receive thread.
      */
     public final void flush() throws IOException {
-        if (Thread.currentThread() == receiveThread) throw new IllegalStateException("sendPacket accessed in the receive thread");
         synchronized (slocksock) {
             outputStream.flush();
             rootOutputStream.flush();
@@ -558,7 +554,7 @@ public class NetMarshalClient implements Closeable {
 
     /**
      * Gets the {@link BiConsumer} receiver consumer.
-     * WARNING: {@link #sendPacket(IPacket, boolean)} and {@link #flush()} cannot be called within the consumer.
+     * WARNING: Calling {@link #sendPacket(IPacket, boolean)} or {@link #flush()} could cause full buffer hangs.
      *
      * @return The receiver consumer or null.
      */
@@ -568,7 +564,7 @@ public class NetMarshalClient implements Closeable {
 
     /**
      * Sets the {@link BiConsumer} receiver consumer.
-     * WARNING: {@link #sendPacket(IPacket, boolean)} and {@link #flush()} cannot be called within the consumer.
+     * WARNING: Calling {@link #sendPacket(IPacket, boolean)} or {@link #flush()} could cause full buffer hangs.
      *
      * @param consumer The new receiver consumer.
      * @throws NullPointerException consumer is null.
