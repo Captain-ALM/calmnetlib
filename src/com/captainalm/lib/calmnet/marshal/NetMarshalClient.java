@@ -212,6 +212,7 @@ public class NetMarshalClient implements Closeable {
      */
     public NetMarshalClient(MulticastSocket socketIn, InetAddress multicastGroupAddress, int multicastGroupPort, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions) throws IOException {
         this(multicastGroupAddress, multicastGroupPort, factory, loader, true, socketIn == null, fragmentationOptions);
+        dsocket = socketIn;
         socketIn.joinGroup(multicastGroupAddress);
         NetworkOutputStream netOut = new NetworkOutputStream(socketIn, 65535);
         netOut.setDatagramTarget(multicastGroupAddress, multicastGroupPort);
@@ -219,7 +220,7 @@ public class NetMarshalClient implements Closeable {
     }
 
     /**
-     * Constructs a new NetMarshalClient with the specified {@link DatagramSocket}, remote {@link InetAddress}, remote port, {@link IPacketFactory}, {@link PacketLoader} and {@link FragmentationOptions}.
+     * Constructs a new NetMarshalClient with the specified {@link DatagramSocket}, remote {@link InetAddress}, remote port, {@link InputStream}, {@link IPacketFactory}, {@link PacketLoader} and {@link FragmentationOptions}.
      *
      * @param socketIn The datagram socket to use.
      * @param remoteAddress The remote address to send data to.
@@ -234,9 +235,28 @@ public class NetMarshalClient implements Closeable {
     public NetMarshalClient(DatagramSocket socketIn, InetAddress remoteAddress, int remotePort, InputStream inputStream, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions) {
         this(remoteAddress, remotePort, factory, loader, false, socketIn == null, fragmentationOptions);
         if (inputStream == null) throw new NullPointerException("inputStream is null");
+        dsocket = socketIn;
         setStreams(null, new NetworkOutputStream(socketIn, 65535, remoteAddress, remotePort));
         rootInputStream = inputStream;
         this.inputStream = inputStream;
+    }
+
+    /**
+     * Constructs a new NetMarshalClient with the specified {@link DatagramSocket}, remote {@link InetAddress}, remote port, {@link IPacketFactory}, {@link PacketLoader} and {@link FragmentationOptions}.
+     *
+     * @param socketIn The datagram socket to use.
+     * @param remoteAddress The remote address to send data to.
+     * @param remotePort The remote port to send data to.
+     * @param factory The packet factory to use.
+     * @param loader The loader to use.
+     * @param fragmentationOptions The fragmentation options, null to disable fragmentation.
+     * @throws NullPointerException socketIn, remoteAddress, factory or loader is null.
+     * @throws IllegalArgumentException remotePort is less than 0 or greater than 65535 or fragmentation options failed validation.
+     */
+    public NetMarshalClient(DatagramSocket socketIn, InetAddress remoteAddress, int remotePort, IPacketFactory factory, PacketLoader loader, FragmentationOptions fragmentationOptions) {
+        this(remoteAddress, remotePort, factory, loader, false, socketIn == null, fragmentationOptions);
+        dsocket = socketIn;
+        setStreams(new NetworkInputStream(socketIn), new NetworkOutputStream(socketIn, 65535, remoteAddress, remotePort));
     }
 
     protected void setStreams(InputStream inputStream, OutputStream outputStream) {
