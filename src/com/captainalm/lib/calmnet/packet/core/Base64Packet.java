@@ -26,6 +26,7 @@ public class Base64Packet implements IStreamedPacket {
     protected IPacketFactory factory;
     protected IPacket held;
     protected byte[] encryptedCache;
+    protected boolean useCache;
 
     /**
      * Constructs a new Base64Packet with the specified {@link IPacketFactory} and {@link PacketLoader}.
@@ -35,7 +36,20 @@ public class Base64Packet implements IStreamedPacket {
      * @throws NullPointerException factory or loader is null.
      */
     public Base64Packet(IPacketFactory factory, PacketLoader loader) {
-        this(factory, loader, null);
+        this(factory, loader, false);
+    }
+
+    /**
+     * Constructs a new Base64Packet with the specified {@link IPacketFactory}, {@link PacketLoader}
+     * and if the encrypted data should be cached.
+     *
+     * @param factory The packet factory to use.
+     * @param loader The Packet Loader to use.
+     * @param useCache If the encrypted data should be cached.
+     * @throws NullPointerException factory or loader is null.
+     */
+    public Base64Packet(IPacketFactory factory, PacketLoader loader, boolean useCache) {
+        this(factory, loader, null, useCache);
     }
 
     /**
@@ -47,11 +61,26 @@ public class Base64Packet implements IStreamedPacket {
      * @throws NullPointerException factory or loader is null.
      */
     public Base64Packet(IPacketFactory factory, PacketLoader loader, IPacket packet) {
+        this(factory, loader, packet, false);
+    }
+
+    /**
+     * Constructs a new Base64Packet with the specified {@link IPacketFactory}, {@link PacketLoader},
+     * {@link IPacket} and if the encrypted data should be cached.
+     *
+     * @param factory The packet factory to use.
+     * @param loader The Packet Loader to use.
+     * @param packet The packet to store or null.
+     * @param useCache If the encrypted data should be cached.
+     * @throws NullPointerException factory or loader is null.
+     */
+    public Base64Packet(IPacketFactory factory, PacketLoader loader, IPacket packet, boolean useCache) {
         if (factory == null) throw new NullPointerException("factory is null");
         if (loader == null) throw new NullPointerException("loader is null");
         this.factory = factory;
         held = packet;
         this.loader = loader;
+        this.useCache = useCache;
     }
 
     /**
@@ -99,8 +128,13 @@ public class Base64Packet implements IStreamedPacket {
     @Override
     public byte[] savePayload() throws PacketException {
         synchronized (slock) {
-            processEncryptedCache();
-            return encryptedCache;
+            if (useCache) {
+                processEncryptedCache();
+                return encryptedCache;
+            } else {
+                if (held == null) throw new PacketException("no data");
+                return Base64.getEncoder().encode(loader.writePacketNoDigest(held, true));
+            }
         }
     }
 
@@ -115,13 +149,22 @@ public class Base64Packet implements IStreamedPacket {
     public void loadPayload(byte[] packetData) throws PacketException {
         if (packetData == null) throw new NullPointerException("packetData is null");
         synchronized (slock) {
-            encryptedCache = packetData;
-            try {
-                byte[] payload = Base64.getDecoder().decode(encryptedCache);
-                held = loader.readPacketNoDigest(payload, factory, null);
-            } catch (IllegalArgumentException e) {
-                encryptedCache = null;
-                throw new PacketException(e);
+            if (useCache) {
+                encryptedCache = packetData;
+                try {
+                    byte[] payload = Base64.getDecoder().decode(encryptedCache);
+                    held = loader.readPacketNoDigest(payload, factory, null);
+                } catch (IllegalArgumentException e) {
+                    encryptedCache = null;
+                    throw new PacketException(e);
+                }
+            } else {
+                try {
+                    byte[] payload = Base64.getDecoder().decode(packetData);
+                    held = loader.readPacketNoDigest(payload, factory, null);
+                } catch (IllegalArgumentException e) {
+                    throw new PacketException(e);
+                }
             }
         }
     }
@@ -138,8 +181,13 @@ public class Base64Packet implements IStreamedPacket {
     public void readData(OutputStream outputStream) throws IOException, PacketException {
         if (outputStream == null) throw new NullPointerException("outputStream is null");
         synchronized (slock) {
-            processEncryptedCache();
-            outputStream.write(encryptedCache);
+            if (useCache) {
+                processEncryptedCache();
+                outputStream.write(encryptedCache);
+            } else {
+                if (held == null) throw new PacketException("no data");
+                loader.writePacketNoDigest(Base64.getEncoder().wrap(outputStream), held, true);
+            }
         }
     }
 
@@ -172,8 +220,13 @@ public class Base64Packet implements IStreamedPacket {
     @Override
     public int getSize() throws PacketException {
         synchronized (slock) {
-            processEncryptedCache();
-            return encryptedCache.length;
+            if (useCache) {
+                processEncryptedCache();
+                return encryptedCache.length;
+            } else {
+                if (held == null) throw new PacketException("no data");
+                return 4 * (int) Math.ceil((double) loader.getPacketSize(held, true, true) / 3);
+            }
         }
     }
 
@@ -239,6 +292,28 @@ public class Base64Packet implements IStreamedPacket {
         synchronized (slock) {
             encryptedCache = null;
             held = packet;
+        }
+    }
+
+    /**
+     * Gets if the encrypted data is cached.
+     *
+     * @return If the encrypted data is cached.
+     */
+    public boolean isCacheUsed() {
+        return useCache;
+    }
+
+    /**
+     * Sets if the encrypted data is cached.
+     *
+     * @param used If the encrypted data should be cached.
+     */
+    public void setCacheUsed(boolean used) {
+        synchronized (slock) {
+            useCache = used;
+            if (!useCache)
+                encryptedCache = null;
         }
     }
 }

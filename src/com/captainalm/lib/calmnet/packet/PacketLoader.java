@@ -269,7 +269,7 @@ public class PacketLoader {
     }
 
     /**
-     * Writes a {@link IPacket} to an output stream.
+     * Writes a {@link IPacket} to an output stream (No digest support).
      *
      * @param outputStream The output stream for writing.
      * @param packet The packet to save.
@@ -295,6 +295,35 @@ public class PacketLoader {
             writeInteger(outputStream, saveArray.length);
             outputStream.write(saveArray);
             if (hashProvider != null) outputStream.write(hashProvider.getDigestOf(saveArray));
+        }
+        outputStream.flush();
+    }
+
+    /**
+     * Writes a {@link IPacket} to an output stream.
+     * NOTE: The {@link #getHashProvider()} for digests is NOT supported and no digest is expected for these packets.
+     *
+     * @param outputStream The output stream for writing.
+     * @param packet The packet to save.
+     * @param writeInformation Write the {@link PacketProtocolInformation} to the stream.
+     * @throws NullPointerException A parameter is null.
+     * @throws IOException A stream exception occurs.
+     * @throws PacketException An Exception has occurred.
+     */
+    public void writePacketNoDigest(OutputStream outputStream, IPacket packet, boolean writeInformation) throws IOException, PacketException {
+        if (outputStream == null) throw new NullPointerException("outputStream is null");
+        if (packet == null) throw new NullPointerException("packet is null");
+        if (isPacketInvalid(packet)) throw new PacketException("packet is invalid");
+
+        if (writeInformation) savePacketProtocolInformation(outputStream, packet.getProtocol());
+
+        if (packet instanceof IStreamedPacket) {
+            writeInteger(outputStream, ((IStreamedPacket) packet).getSize());
+            ((IStreamedPacket) packet).readData(outputStream);
+        } else {
+            byte[] saveArray = packet.savePayload();
+            writeInteger(outputStream, saveArray.length);
+            outputStream.write(saveArray);
         }
         outputStream.flush();
     }
@@ -411,13 +440,14 @@ public class PacketLoader {
      *
      * @param packet The packet to check.
      * @param includeInformation If the 2 byte information header is included.
+     * @param ignoreDigest If the digest length should be ignored if available.
      * @return The size of the packet in bytes.
      * @throws NullPointerException packet is null.
      * @throws PacketException A Packet Exception has occurred.
      */
-    public int getPacketSize(IPacket packet, boolean includeInformation) throws PacketException {
+    public int getPacketSize(IPacket packet, boolean includeInformation, boolean ignoreDigest) throws PacketException {
         if (packet == null) throw new NullPointerException("packet is null");
-        return ((includeInformation) ? 2 : 0) + ((packet instanceof IStreamedPacket) ? ((IStreamedPacket) packet).getSize() : packet.savePayload().length)
-                + ((hashProvider == null) ? 0 : hashProvider.getLength());
+        return 4 + ((includeInformation) ? 2 : 0) + ((packet instanceof IStreamedPacket) ? ((IStreamedPacket) packet).getSize() : packet.savePayload().length)
+                + ((ignoreDigest || hashProvider == null) ? 0 : hashProvider.getLength());
     }
 }
