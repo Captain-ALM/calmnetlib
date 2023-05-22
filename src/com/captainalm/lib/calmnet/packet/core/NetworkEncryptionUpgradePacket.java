@@ -24,6 +24,7 @@ public class NetworkEncryptionUpgradePacket implements IPacket, IAcknowledgement
     protected boolean upgrade;
     protected boolean base64ed;
     protected ICipherFactory cipherFactory;
+    protected boolean sendSecrets;
 
     protected final Object slock = new Object();
 
@@ -82,7 +83,7 @@ public class NetworkEncryptionUpgradePacket implements IPacket, IAcknowledgement
         synchronized (slock) {
             if (acknowledgement == null) throw new PacketException("no data");
 
-            byte[] cipherBytes = (cipherFactory == null) ? null : cipherFactory.getSettings();
+            byte[] cipherBytes = (cipherFactory == null) ? null : (sendSecrets) ? cipherFactory.getSettings() : cipherFactory.getSettingsNoSecrets();
             byte[] toret = new byte[2 + ((cipherBytes == null) ? 0 : cipherBytes.length)];
             toret[0] = (acknowledgement) ? (byte) 1 : (byte) 0;
             toret[1] = (byte) (((upgrade) ? 1 : 0) + ((base64ed) ? 2 : 0));
@@ -98,7 +99,7 @@ public class NetworkEncryptionUpgradePacket implements IPacket, IAcknowledgement
      *
      * @param packetData The packet payload data.
      * @throws NullPointerException The new store data is null.
-     * @throws PacketException      An Exception has occurred.
+     * @throws PacketException An Exception has occurred.
      */
     @Override
     public void loadPayload(byte[] packetData) throws PacketException {
@@ -195,5 +196,25 @@ public class NetworkEncryptionUpgradePacket implements IPacket, IAcknowledgement
     @Override
     public boolean isAcknowledgement() {
         return (acknowledgement != null && acknowledgement);
+    }
+
+    /**
+     * Gets if secrets are sent as part of cipher settings.
+     *
+     * @return If the secrets are part of the cipher settings.
+     */
+    public boolean areSecretsSent() {
+        return sendSecrets;
+    }
+
+    /**
+     * Sets if secrets should be sent as part of cipher settings.
+     *
+     * @param sendSecrets If secrets are part of the cipher settings.
+     */
+    public void setIfSecretsSent(boolean sendSecrets) {
+        synchronized (slock) {
+            this.sendSecrets = sendSecrets;
+        }
     }
 }
