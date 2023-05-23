@@ -237,53 +237,58 @@ public class EncryptedPacket implements IStreamedPacket, IInternalCache {
     public void loadPayload(byte[] packetData) throws PacketException {
         if (packetData == null) throw new NullPointerException("packetData is null");
         synchronized (slock) {
-            int index = 1;
-
-            int cipherLenCache = (packetData[index++] & 0xff) * 16777216;
-            cipherLenCache += (packetData[index++] & 0xff) * 65536;
-            cipherLenCache += (packetData[index++] & 0xff) * 256;
-            cipherLenCache += (packetData[index++] & 0xff);
-            if (cipherLenCache < 1) throw new PacketException("cipher length less than 1");
-
-            byte[] cipherSettingsCache = new byte[cipherLenCache];
-            System.arraycopy(packetData, index, cipherSettingsCache, 0, cipherLenCache); index += cipherLenCache;
             try {
-                cipherFactory.setSettings(cipherSettingsCache);
-            } catch (CipherException e) {
-                throw new PacketException(e);
-            }
+                int index = 1;
 
-            generateCipher(Cipher.DECRYPT_MODE);
+                int cipherLenCache = (packetData[index++] & 0xff) * 16777216;
+                cipherLenCache += (packetData[index++] & 0xff) * 65536;
+                cipherLenCache += (packetData[index++] & 0xff) * 256;
+                cipherLenCache += (packetData[index++] & 0xff);
+                if (cipherLenCache < 1) throw new PacketException("cipher length less than 1");
 
-            trailingArrayLengthCache = 0;
-            if ((packetData[0] & 1) == 1) {
-                trailingArrayLengthCache = (packetData[index++] & 0xff) * 16777216;
-                trailingArrayLengthCache += (packetData[index++] & 0xff) * 65536;
-                trailingArrayLengthCache += (packetData[index++] & 0xff) * 256;
-                trailingArrayLengthCache += (packetData[index++] & 0xff);
-                if (trailingArrayLengthCache < 1) throw new PacketException("trailer length less than 1");
-            }
-
-            encryptedCache = new byte[packetData.length - index];
-            System.arraycopy(packetData, index, encryptedCache, 0, encryptedCache.length);
-
-            try {
-                byte[] decrypted = cipher.doFinal(encryptedCache);
-                byte[] thePacket = new byte[decrypted.length - trailingArrayLengthCache];
-
-                System.arraycopy(decrypted, 0, thePacket, 0, thePacket.length);
-
-                if (trailingArrayLengthCache > 0) {
-                    byte[] theTrailer = new byte[trailingArrayLengthCache];
-                    System.arraycopy(decrypted, thePacket.length, theTrailer, 0, trailingArrayLengthCache);
-                    trailingPassword = new String(theTrailer, StandardCharsets.UTF_8);
+                byte[] cipherSettingsCache = new byte[cipherLenCache];
+                System.arraycopy(packetData, index, cipherSettingsCache, 0, cipherLenCache);
+                index += cipherLenCache;
+                try {
+                    cipherFactory.setSettings(cipherSettingsCache);
+                } catch (CipherException e) {
+                    throw new PacketException(e);
                 }
 
-                held = loader.readPacketNoDigest(thePacket, factory, null);
-            } catch (BadPaddingException | IllegalBlockSizeException e) {
+                generateCipher(Cipher.DECRYPT_MODE);
+
+                trailingArrayLengthCache = 0;
+                if ((packetData[0] & 1) == 1) {
+                    trailingArrayLengthCache = (packetData[index++] & 0xff) * 16777216;
+                    trailingArrayLengthCache += (packetData[index++] & 0xff) * 65536;
+                    trailingArrayLengthCache += (packetData[index++] & 0xff) * 256;
+                    trailingArrayLengthCache += (packetData[index++] & 0xff);
+                    if (trailingArrayLengthCache < 1) throw new PacketException("trailer length less than 1");
+                }
+
+                encryptedCache = new byte[packetData.length - index];
+                System.arraycopy(packetData, index, encryptedCache, 0, encryptedCache.length);
+
+                try {
+                    byte[] decrypted = cipher.doFinal(encryptedCache);
+                    byte[] thePacket = new byte[decrypted.length - trailingArrayLengthCache];
+
+                    System.arraycopy(decrypted, 0, thePacket, 0, thePacket.length);
+
+                    if (trailingArrayLengthCache > 0) {
+                        byte[] theTrailer = new byte[trailingArrayLengthCache];
+                        System.arraycopy(decrypted, thePacket.length, theTrailer, 0, trailingArrayLengthCache);
+                        trailingPassword = new String(theTrailer, StandardCharsets.UTF_8);
+                    }
+
+                    held = loader.readPacketNoDigest(thePacket, factory, null);
+                } catch (BadPaddingException | IllegalBlockSizeException e) {
+                    throw new PacketException(e);
+                } finally {
+                    if (!useCache) encryptedCache = null;
+                }
+            } catch (IndexOutOfBoundsException e) {
                 throw new PacketException(e);
-            } finally {
-                if (!useCache) encryptedCache = null;
             }
         }
     }

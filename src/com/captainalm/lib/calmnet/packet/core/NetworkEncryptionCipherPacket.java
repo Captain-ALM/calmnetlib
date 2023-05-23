@@ -139,32 +139,36 @@ public class NetworkEncryptionCipherPacket implements IStreamedPacket, IAcknowle
         if (packetData == null) throw new NullPointerException("packetData is null");
         if (packetData.length < 5) throw new PacketException("no data");
         synchronized (slock) {
-            acknowledgement = (packetData[0] == 1);
-            if (!acknowledgement && packetData[0] != 0) acknowledgement = null;
-            int index = 1;
+            try {
+                acknowledgement = (packetData[0] == 1);
+                if (!acknowledgement && packetData[0] != 0) acknowledgement = null;
+                int index = 1;
 
-            int recordCount = (packetData[index++] & 0xff) * 16777216;
-            recordCount += (packetData[index++] & 0xff) * 65536;
-            recordCount += (packetData[index++] & 0xff) * 256;
-            recordCount += (packetData[index++] & 0xff);
-            if (recordCount < 0) throw new PacketException("record count less than 0");
+                int recordCount = (packetData[index++] & 0xff) * 16777216;
+                recordCount += (packetData[index++] & 0xff) * 65536;
+                recordCount += (packetData[index++] & 0xff) * 256;
+                recordCount += (packetData[index++] & 0xff);
+                if (recordCount < 0) throw new PacketException("record count less than 0");
 
-            if (useCache) cipherData = packetData;
-            ciphers = new String[recordCount];
-            for (int i = 0; i < recordCount; i++) {
-                int recordLength = (packetData[index++] & 0xff) * 16777216;
-                recordLength += (packetData[index++] & 0xff) * 65536;
-                recordLength += (packetData[index++] & 0xff) * 256;
-                recordLength += (packetData[index++] & 0xff);
-                if (recordLength < 0) throw new PacketException("record length less than 0");
-                byte[] currentRecord = new byte[recordLength];
-                if (recordLength > 0) {
-                    System.arraycopy(packetData, index, currentRecord, 0, recordLength);
-                    index += recordLength;
-                    ciphers[i] = new String(currentRecord, StandardCharsets.UTF_8);
-                } else {
-                    ciphers[i] = "";
+                if (useCache) cipherData = packetData;
+                ciphers = new String[recordCount];
+                for (int i = 0; i < recordCount; i++) {
+                    int recordLength = (packetData[index++] & 0xff) * 16777216;
+                    recordLength += (packetData[index++] & 0xff) * 65536;
+                    recordLength += (packetData[index++] & 0xff) * 256;
+                    recordLength += (packetData[index++] & 0xff);
+                    if (recordLength < 0) throw new PacketException("record length less than 0");
+                    byte[] currentRecord = new byte[recordLength];
+                    if (recordLength > 0) {
+                        System.arraycopy(packetData, index, currentRecord, 0, recordLength);
+                        index += recordLength;
+                        ciphers[i] = new String(currentRecord, StandardCharsets.UTF_8);
+                    } else {
+                        ciphers[i] = "";
+                    }
                 }
+            } catch (IndexOutOfBoundsException e) {
+                throw new PacketException(e);
             }
         }
     }

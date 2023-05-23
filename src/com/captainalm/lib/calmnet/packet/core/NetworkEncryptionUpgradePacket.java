@@ -106,20 +106,24 @@ public class NetworkEncryptionUpgradePacket implements IPacket, IAcknowledgement
         if (packetData == null) throw new NullPointerException("packetData is null");
         if (packetData.length < 2) throw new PacketException("no data");
         synchronized (slock) {
-            acknowledgement = (packetData[0] == 1);
-            if (!acknowledgement && packetData[0] != 0) acknowledgement = null;
+            try {
+                acknowledgement = (packetData[0] == 1);
+                if (!acknowledgement && packetData[0] != 0) acknowledgement = null;
 
-            upgrade = ((packetData[1] & 1) == 1);
-            base64ed =  ((packetData[1] & 2) == 2);
+                upgrade = ((packetData[1] & 1) == 1);
+                base64ed = ((packetData[1] & 2) == 2);
 
-            if (cipherFactory != null && packetData.length > 2) {
-                byte[] cipherBytes = new byte[packetData.length - 2];
-                System.arraycopy(packetData, 2, cipherBytes, 0, cipherBytes.length);
-                try {
-                    cipherFactory.setSettings(cipherBytes);
-                } catch (CipherException e) {
-                    throw new PacketException(e);
+                if (cipherFactory != null && packetData.length > 2) {
+                    byte[] cipherBytes = new byte[packetData.length - 2];
+                    System.arraycopy(packetData, 2, cipherBytes, 0, cipherBytes.length);
+                    try {
+                        cipherFactory.setSettings(cipherBytes);
+                    } catch (CipherException e) {
+                        throw new PacketException(e);
+                    }
                 }
+            } catch (IndexOutOfBoundsException e) {
+                throw new PacketException(e);
             }
         }
     }
