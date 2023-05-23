@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" build-on-make="true" name="calmnetlib">
+    <output-path>$PROJECT_DIR$/out/artifacts/calmnetlib</output-path>
+    <root id="archive" name="calmnetlib.jar">
+      <element id="module-output" name="calmnetlib" />
+    </root>
+  </artifact>
+</component>
