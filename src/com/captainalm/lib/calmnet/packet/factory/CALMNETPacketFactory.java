@@ -55,6 +55,7 @@ public class CALMNETPacketFactory implements IPacketFactory {
     public IPacket getPacket(PacketProtocolInformation information) {
         if (information == null) throw new NullPointerException("information is null");
 
+        if (information.equals(NetworkEncryptionCipherPacket.getTheProtocol())) return new NetworkEncryptionCipherPacket(null, new String[0]);
         if (information.equals(Base64Packet.getTheProtocol())) return new Base64Packet(factoryToUse, loaderToUse);
         if (information.equals(EncryptedPacket.getTheProtocol()) && cipherToUse != null) return new EncryptedPacket(factoryToUse, loaderToUse, cipherToUse);
         if (information.equals(NetworkEncryptionUpgradePacket.getTheProtocol())) return new NetworkEncryptionUpgradePacket(null, false, false, cipherToUse);

@@ -23,7 +23,7 @@ import static com.captainalm.lib.calmnet.packet.PacketLoader.readByteFromInputSt
  *
  * @author Captain ALM
  */
-public class EncryptedPacket implements IStreamedPacket {
+public class EncryptedPacket implements IStreamedPacket, IInternalCache {
     /*
      * Packet Format:
      *
@@ -356,10 +356,7 @@ public class EncryptedPacket implements IStreamedPacket {
             int flag = readByteFromInputStream(inputStream) & 0xff;
 
             if (size < 5) throw new IOException("inputStream end of stream");
-            int cipherLenCache = (readByteFromInputStream(inputStream) & 0xff) * 16777216;
-            cipherLenCache += (readByteFromInputStream(inputStream) & 0xff) * 65536;
-            cipherLenCache += (readByteFromInputStream(inputStream) & 0xff) * 256;
-            cipherLenCache += (readByteFromInputStream(inputStream) & 0xff);
+            int cipherLenCache = PacketLoader.readInteger(inputStream);
             if (cipherLenCache < 1) throw new PacketException("cipher length less than 1");
 
             if (size < 5 + cipherLenCache) throw new IOException("inputStream end of stream");
@@ -378,10 +375,7 @@ public class EncryptedPacket implements IStreamedPacket {
             trailingArrayLengthCache = 0;
             if ((flag & 1) == 1) {
                 if (size < 9 + cipherLenCache) throw new IOException("inputStream end of stream");
-                trailingArrayLengthCache = (readByteFromInputStream(inputStream) & 0xff) * 16777216;
-                trailingArrayLengthCache += (readByteFromInputStream(inputStream) & 0xff) * 65536;
-                trailingArrayLengthCache += (readByteFromInputStream(inputStream) & 0xff) * 256;
-                trailingArrayLengthCache += (readByteFromInputStream(inputStream) & 0xff);
+                trailingArrayLengthCache = PacketLoader.readByteFromInputStream(inputStream);
                 if (trailingArrayLengthCache < 1) throw new PacketException("trailer length less than 1");
             }
 
@@ -538,6 +532,7 @@ public class EncryptedPacket implements IStreamedPacket {
      *
      * @return If the encrypted data is cached.
      */
+    @Override
     public boolean isCacheUsed() {
         return useCache;
     }
@@ -547,6 +542,7 @@ public class EncryptedPacket implements IStreamedPacket {
      *
      * @param used If the encrypted data should be cached.
      */
+    @Override
     public void setCacheUsed(boolean used) {
         synchronized (slock) {
             useCache = used;
