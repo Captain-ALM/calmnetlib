@@ -283,19 +283,19 @@ public final class FragmentReceiver {
     }
 
     /**
-     * Gets whether responses should be verified.
+     * Gets whether responses should be verified by sending back the payload to be verified.
      *
-     * @return Should responses be verified.
+     * @return Should responses be verified by sending back the payload.
      */
     public boolean shouldVerifyResponses() {
         return verifyResponses;
     }
 
     /**
-     * Sets whether responses should be verified.
+     * Sets whether responses should be verified by sending back the payload to be verified.
      * If set to false, {@link #setSentDataWillBeAllVerified(boolean)} will be set to false too.
      *
-     * @param state If responses should be verified.
+     * @param state If responses should be verified by sending back the payload.
      */
     public void setResponseVerification(boolean state) {
         synchronized (slock) {
@@ -305,19 +305,19 @@ public final class FragmentReceiver {
     }
 
     /**
-     * Gets whether all sent fragments are verified to be equal.
+     * Gets whether all sent fragments are expected to be verified.
      *
-     * @return If all sent fragments will be verified to be equal.
+     * @return If all sent fragments are expected to be verified.
      */
     public boolean shouldSentDataBeAllVerified() {
         return makeSureSendDataVerified;
     }
 
     /**
-     * Gets whether all sent fragments are verified to be equal.
+     * Gets whether all sent fragments are expected to be verified.
      * Requires {@link #setResponseVerification(boolean)} set to true.
      *
-     * @param state If all sent fragments will be verified to be equal.
+     * @param state If all sent fragments are expected to be verified.
      */
     public void setSentDataWillBeAllVerified(boolean state) {
         synchronized (slock) {

@@ -18,7 +18,7 @@ public final class FragmentationOptions {
      * See:
      * {@link FragmentSender#setSplitSize(int)}
      */
-    public int fragmentationSplitSize = 496;
+    public int fragmentationSplitSize = 448;
     /**
      * See:
      * {@link FragmentReceiver#setNumberOfEmptySendsTillForcedCompleteOrResend(int)}

@@ -18,7 +18,7 @@ public final class FragmentSender {
     private final HashMap<Integer, FragmentOutput> registry = new HashMap<>();
     private final Object slock = new Object();
     private final Object slockfinish = new Object();
-    private int splitSize = 496;
+    private int splitSize = 448;
     private PacketLoader packetLoader;
     private boolean verifyResponses = false;
     private boolean makeSureSendDataVerified = false;
@@ -249,7 +249,7 @@ public final class FragmentSender {
     }
 
     /**
-     * Gets whether responses should be verified.
+     * Gets whether responses should be verified by checking if they are equal.
      *
      * @return Should responses be verified.
      */
@@ -258,7 +258,7 @@ public final class FragmentSender {
     }
 
     /**
-     * Sets whether responses should be verified.
+     * Sets whether responses should be verified by checking if they are equal.
      * If set to false, {@link #setSentDataWillBeAllVerified(boolean)} will be set to false too.
      *
      * @param state If responses should be verified.
@@ -271,19 +271,19 @@ public final class FragmentSender {
     }
 
     /**
-     * Gets whether all sent fragments are verified to be equal.
+     * Gets whether all sent fragments are verified via resend checks for equality.
      *
-     * @return If all sent fragments will be verified to be equal.
+     * @return If all sent fragments will be verified via resend checks for equality.
      */
     public boolean shouldSentDataBeAllVerified() {
         return makeSureSendDataVerified;
     }
 
     /**
-     * Gets whether all sent fragments are verified to be equal.
+     * Gets whether all sent fragments are verified via resend checks for equality.
      * Requires {@link #setResponseVerification(boolean)} set to true.
      *
-     * @param state If all sent fragments will be verified to be equal.
+     * @param state If all sent fragments will be verified via resend checks for equality.
      */
     public void setSentDataWillBeAllVerified(boolean state) {
         synchronized (slock) {

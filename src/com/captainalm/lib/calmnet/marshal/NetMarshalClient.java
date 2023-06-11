@@ -101,17 +101,16 @@ public class NetMarshalClient implements Closeable {
             fragmentMonitorThread = new Thread(() -> {
                 int ageCheckTime = this.fragmentationOptions.maximumFragmentAge - 1;
                 while (running) {
-                    int id = -1;
                     synchronized (this.fragmentationOptions) {
                         for (int c : fragmentRMM.keySet()) {
                             if (!fragmentRMM.get(c).plusSeconds(ageCheckTime).isAfter(LocalDateTime.now())) {
-                                fragmentRMM.remove(id);
+                                fragmentRMM.remove(c);
                                 fragmentReceiver.deletePacketFromRegistry(c);
                             }
                         }
                         for (int c : fragmentSMM.keySet()) {
                             if (!fragmentSMM.get(c).plusSeconds(ageCheckTime).isAfter(LocalDateTime.now())) {
-                                fragmentSMM.remove(id);
+                                fragmentSMM.remove(c);
                                 fragmentSender.deletePacketFromRegistry(c);
                             }
                         }
@@ -127,8 +126,8 @@ public class NetMarshalClient implements Closeable {
                 fragmentSMM.clear();
             }, "thread_frag_monitor_" + remoteAddress.getHostAddress() + ":" + remotePort);
             fragmentFinishReceiveMonitorThread = new Thread(() -> {
+                int id = -1;
                 while (running) {
-                    int id = -1;
                     try {
                         while ((id = fragmentReceiver.getLastIDFinished()) != -1) synchronized (this.fragmentationOptions) {
                             fragmentRMM.remove(id);
@@ -139,8 +138,8 @@ public class NetMarshalClient implements Closeable {
                 fragmentReceiver.clearLastIDFinished();
             }, "thread_frag_fin_recv_monitor_" + remoteAddress.getHostAddress() + ":" + remotePort);
             fragmentFinishSendMonitorThread = new Thread(() -> {
+                int id = -1;
                 while (running) {
-                    int id = -1;
                     try {
                         while ((id = fragmentSender.getLastIDFinished()) != -1) synchronized (this.fragmentationOptions) {
                             fragmentSMM.remove(id);

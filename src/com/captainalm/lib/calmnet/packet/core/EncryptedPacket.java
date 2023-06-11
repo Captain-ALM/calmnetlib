@@ -12,7 +12,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
-import static com.captainalm.lib.calmnet.packet.PacketLoader.readByteFromInputStream;
+import static com.captainalm.lib.calmnet.packet.PacketLoader.readByteIntegerFromInputStream;
 
 /**
  * This class provides an encrypted packet that can hold an {@link IPacket}.
@@ -358,7 +358,7 @@ public class EncryptedPacket implements IStreamedPacket, IInternalCache {
         if (size < 0) throw new IllegalArgumentException("size is less than 0");
         synchronized (slock) {
             if (size < 1) throw new IOException("inputStream end of stream");
-            int flag = readByteFromInputStream(inputStream) & 0xff;
+            int flag = readByteIntegerFromInputStream(inputStream);
 
             if (size < 5) throw new IOException("inputStream end of stream");
             int cipherLenCache = PacketLoader.readInteger(inputStream);
@@ -380,7 +380,7 @@ public class EncryptedPacket implements IStreamedPacket, IInternalCache {
             trailingArrayLengthCache = 0;
             if ((flag & 1) == 1) {
                 if (size < 9 + cipherLenCache) throw new IOException("inputStream end of stream");
-                trailingArrayLengthCache = PacketLoader.readByteFromInputStream(inputStream);
+                trailingArrayLengthCache = PacketLoader.readByteIntegerFromInputStream(inputStream);
                 if (trailingArrayLengthCache < 1) throw new PacketException("trailer length less than 1");
             }
 

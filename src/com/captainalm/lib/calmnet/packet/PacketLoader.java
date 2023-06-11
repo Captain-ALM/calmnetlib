@@ -23,24 +23,41 @@ import static com.captainalm.lib.calmnet.packet.PacketProtocolInformation.savePa
 public class PacketLoader {
     protected boolean allowInvalidPackets;
 
+    protected boolean oldPacketFormat;
+
     /**
      * Constructs a new Packet loader instance.
      * If using a digest provider, use {@link #PacketLoader(DigestProvider)}
      */
     public PacketLoader() {
-        this(null);
+        this(null, false);
     }
 
     /**
      * Constructs a new Packet loader instance with the specified {@link DigestProvider}.
      * If using a digest provider, make sure all endpoints use the same algorithm;
-     * if null, no trailer is created or expected;
+     * if null, no trailer is created;
      * this is ignored if saving / loading packets from byte arrays.
      *
      * @param provider The digest provider or null.
      */
     public PacketLoader(DigestProvider provider) {
+        this(provider, false);
+    }
+
+    /**
+     * Constructs a new Packet loader instance with the specified {@link DigestProvider}
+     * and if the old packet format should be used.
+     * If using a digest provider, make sure all endpoints use the same algorithm;
+     * if null, no trailer is created;
+     * this is ignored if saving / loading packets from byte arrays.
+     *
+     * @param provider The digest provider or null.
+     * @param oldPacketFormat If the old packet format should be used (No explicit hash indication nor length).
+     */
+    public PacketLoader(DigestProvider provider, boolean oldPacketFormat) {
         hashProvider = provider;
+        this.oldPacketFormat = oldPacketFormat;
     }
 
     protected DigestProvider hashProvider;
@@ -72,8 +89,49 @@ public class PacketLoader {
         this.allowInvalidPackets = allowInvalidPackets;
     }
 
+    /**
+     * Is the old packet format in use (No explicit hash indication nor length).
+     *
+     * @return If the old packet format is in use.
+     */
+    public boolean isOldPacketFormatInUse() {
+        return oldPacketFormat;
+    }
+
+    /**
+     * Sets if the old packet format should be used (No explicit hash indication nor length).
+     * @param useOldFormat If the old packet format should be used.
+     */
+    public void setOldPacketFormatUsage(boolean useOldFormat) {
+        oldPacketFormat = useOldFormat;
+    }
+
     protected boolean isPacketInvalid(IPacket packetIn) {
         return (packetIn == null || !packetIn.isValid()) && !allowInvalidPackets;
+    }
+
+    /**
+     * Adds the most significant flag to the given integer.
+     *
+     * @param value The integer to add the flag to.
+     * @return The integer with the flag added.
+     */
+    public static int addMostSignificantFlag(int value) {
+        value += 1;
+        value += Integer.MAX_VALUE;
+        return value;
+    }
+
+    /**
+     * Subtracts the most significant flag from the given integer.
+     *
+     * @param value The integer to subtract the flag from.
+     * @return The integer with the flag subtracted.
+     */
+    public static int subtractMostSignificantFlag(int value) {
+        value -= 1;
+        value -= Integer.MAX_VALUE;
+        return value;
     }
 
     /**
@@ -102,8 +160,9 @@ public class PacketLoader {
         if (toret != null) {
             if (arrayIn.length < 6) throw new PacketException("arrayIn does not have a length header.");
             int length = (arrayIn[2] & 0xff) * 16777216 + (arrayIn[3] & 0xff) * 65536 + (arrayIn[4] & 0xff) * 256 + (arrayIn[5] & 0xff);
+            if (length < 0) length = subtractMostSignificantFlag(length);
             byte[] loadArray = new byte[length];
-            System.arraycopy(arrayIn, 6, loadArray, 0, arrayIn.length - 6);
+            System.arraycopy(arrayIn, 6, loadArray, 0, Math.min(arrayIn.length - 6, length));
             toret.loadPayload(loadArray);
             if (isPacketInvalid(toret)) toret = null;
         }
@@ -131,9 +190,23 @@ public class PacketLoader {
         IPacket toret = factory.getPacket(information);
 
         if (toret != null) {
-            InputStream lIS = (hashProvider == null) ? inputStream : hashProvider.getDigestInputStream(inputStream);
-            byte[] loadArray = readArrayFromInputStream(lIS, readInteger(inputStream));
-            if (hashProvider == null || DigestComparer.compareDigests(inputStream, ((DigestInputStream) lIS).getMessageDigest().digest())) toret.loadPayload(loadArray);
+            int length = readInteger(inputStream);
+            boolean hasHash = length < 0;
+            if (hasHash) length = subtractMostSignificantFlag(length);
+            InputStream lIS = (hashProvider == null || !hasHash) ? inputStream : hashProvider.getDigestInputStream(inputStream);
+            byte[] loadArray = readArrayFromInputStream(lIS, length);
+            int hashLength;
+            if (hasHash) {
+                hashLength = readByteIntegerFromInputStream(inputStream);
+                if (hashProvider != null && hashProvider.getLength() != hashLength) {
+                    readArrayFromInputStream(inputStream, hashLength);
+                    return null;
+                }
+            } else hashLength = 0;
+            if ((!hasHash && !oldPacketFormat) || hashProvider == null) {
+                readArrayFromInputStream(inputStream, hashLength);
+                toret.loadPayload(loadArray);
+            } else if (DigestComparer.compareDigests(inputStream, ((DigestInputStream) lIS).getMessageDigest().digest())) toret.loadPayload(loadArray);
             if (isPacketInvalid(toret)) toret = null;
         }
         return toret;
@@ -161,7 +234,9 @@ public class PacketLoader {
         IPacket toret = factory.getPacket(information);
 
         if (toret != null) {
-            byte[] loadArray = readArrayFromInputStream(inputStream, readInteger(inputStream));
+            int length = readInteger(inputStream);
+            if (length < 0) length = subtractMostSignificantFlag(length);
+            byte[] loadArray = readArrayFromInputStream(inputStream, length);
             toret.loadPayload(loadArray);
             if (isPacketInvalid(toret)) toret = null;
         }
@@ -191,9 +266,21 @@ public class PacketLoader {
 
         if (toret instanceof IStreamedPacket) {
             int length = readInteger(inputStream);
-            InputStream lIS = (hashProvider == null) ? inputStream : hashProvider.getDigestInputStream(inputStream);
+            boolean hasHash = length < 0;
+            if (hasHash) length = subtractMostSignificantFlag(length);
+            InputStream lIS = (hashProvider == null || !hasHash) ? inputStream : hashProvider.getDigestInputStream(inputStream);
             ((IStreamedPacket) toret).writeData(lIS, length);
-            if (hashProvider != null && !DigestComparer.compareDigests(inputStream, ((DigestInputStream) lIS).getMessageDigest().digest())) toret = null;
+            int hashLength;
+            if (hasHash) {
+                hashLength = readByteIntegerFromInputStream(inputStream);
+                if (hashProvider != null && hashProvider.getLength() != hashLength) {
+                    readArrayFromInputStream(inputStream, hashLength);
+                    return null;
+                }
+            } else hashLength = 0;
+            if ((hasHash || oldPacketFormat) && hashProvider != null) {
+                if (!DigestComparer.compareDigests(inputStream, ((DigestInputStream) lIS).getMessageDigest().digest())) toret = null;
+            } else readArrayFromInputStream(inputStream, hashLength);
             if (isPacketInvalid(toret)) toret = null;
         } else if (toret != null) {
             return readPacket(inputStream, factory, information);
@@ -225,6 +312,7 @@ public class PacketLoader {
 
         if (toret instanceof IStreamedPacket) {
             int length = readInteger(inputStream);
+            if (length < 0) length = subtractMostSignificantFlag(length);
             ((IStreamedPacket) toret).writeData(inputStream, length);
             if (isPacketInvalid(toret)) toret = null;
         } else if (toret != null) {
@@ -286,15 +374,25 @@ public class PacketLoader {
         if (writeInformation) savePacketProtocolInformation(outputStream, packet.getProtocol());
 
         if (packet instanceof IStreamedPacket) {
-            writeInteger(outputStream, ((IStreamedPacket) packet).getSize());
+            int pLength = ((IStreamedPacket) packet).getSize();
+            if (hashProvider != null && !oldPacketFormat) pLength = addMostSignificantFlag(pLength);
+            writeInteger(outputStream, pLength);
             OutputStream lOS = (hashProvider == null) ? outputStream : hashProvider.getDigestOutputStream(outputStream);
             ((IStreamedPacket) packet).readData(lOS);
-            if (hashProvider != null) outputStream.write(((DigestOutputStream) lOS).getMessageDigest().digest());
+            if (hashProvider != null) {
+                if (!oldPacketFormat) outputStream.write(hashProvider.getLength());
+                outputStream.write(((DigestOutputStream) lOS).getMessageDigest().digest());
+            }
         } else {
             byte[] saveArray = packet.savePayload();
-            writeInteger(outputStream, saveArray.length);
+            int pLength = saveArray.length;
+            if (hashProvider != null && !oldPacketFormat) pLength = addMostSignificantFlag(pLength);
+            writeInteger(outputStream, pLength);
             outputStream.write(saveArray);
-            if (hashProvider != null) outputStream.write(hashProvider.getDigestOf(saveArray));
+            if (hashProvider != null) {
+                if (!oldPacketFormat) outputStream.write(hashProvider.getLength());
+                outputStream.write(hashProvider.getDigestOf(saveArray));
+            }
         }
         outputStream.flush();
     }
@@ -338,10 +436,10 @@ public class PacketLoader {
      */
     public static int readInteger(InputStream inputStream) throws IOException {
         if (inputStream == null) throw new NullPointerException("inputStream is null");
-        int length = (readByteFromInputStream(inputStream) & 0xff) * 16777216;
-        length += (readByteFromInputStream(inputStream) & 0xff) * 65536;
-        length += (readByteFromInputStream(inputStream) & 0xff) * 256;
-        length += (readByteFromInputStream(inputStream) & 0xff);
+        int length = readByteIntegerFromInputStream(inputStream)* 16777216;
+        length += readByteIntegerFromInputStream(inputStream) * 65536;
+        length += readByteIntegerFromInputStream(inputStream) * 256;
+        length += readByteIntegerFromInputStream(inputStream);
         return length;
     }
 
@@ -368,6 +466,7 @@ public class PacketLoader {
 
     /**
      * Reads a byte from an {@link InputStream}.
+     * See also: {@link #readByteIntegerFromInputStream(InputStream)}.
      *
      * @param inputStream The input stream to read from.
      * @return The byte read.
@@ -379,6 +478,22 @@ public class PacketLoader {
         int toret;
         if ((toret = inputStream.read()) == -1) throw new IOException("inputStream end of stream");
         return (byte) toret;
+    }
+
+    /**
+     * Reads a byte (In int form) from an {@link InputStream}.
+     * See also: {@link #readByteFromInputStream(InputStream)}.
+     *
+     * @param inputStream The input stream to read from.
+     * @return The byte read (As an int).
+     * @throws NullPointerException inputStream is null.
+     * @throws IOException An I/O error has occurred or end of stream has been reached.
+     */
+    public static int readByteIntegerFromInputStream(InputStream inputStream) throws IOException {
+        if (inputStream == null) throw new NullPointerException("inputStream is null");
+        int toret;
+        if ((toret = inputStream.read()) == -1) throw new IOException("inputStream end of stream");
+        return toret;
     }
 
     /**
