@@ -18,6 +18,7 @@ import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.net.Socket;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Queue;
@@ -100,20 +101,27 @@ public class NetMarshalClient implements Closeable {
             fragmentSMM = new HashMap<>();
             fragmentMonitorThread = new Thread(() -> {
                 int ageCheckTime = this.fragmentationOptions.maximumFragmentAge - 1;
+                ArrayList<Integer> idsToRemove = new ArrayList<>();
                 while (running) {
                     synchronized (this.fragmentationOptions) {
                         for (int c : fragmentRMM.keySet()) {
-                            if (!fragmentRMM.get(c).plusSeconds(ageCheckTime).isAfter(LocalDateTime.now())) {
-                                fragmentRMM.remove(c);
-                                fragmentReceiver.deletePacketFromRegistry(c);
-                            }
+                            if (!fragmentRMM.get(c).plusSeconds(ageCheckTime).isAfter(LocalDateTime.now()))
+                                idsToRemove.add(c);
                         }
+                        for (int c : idsToRemove) {
+                            fragmentRMM.remove(c);
+                            fragmentReceiver.deletePacketFromRegistry(c);
+                        }
+                        idsToRemove.clear();
                         for (int c : fragmentSMM.keySet()) {
-                            if (!fragmentSMM.get(c).plusSeconds(ageCheckTime).isAfter(LocalDateTime.now())) {
-                                fragmentSMM.remove(c);
-                                fragmentSender.deletePacketFromRegistry(c);
-                            }
+                            if (!fragmentSMM.get(c).plusSeconds(ageCheckTime).isAfter(LocalDateTime.now()))
+                                idsToRemove.add(c);
                         }
+                        for (int c : idsToRemove) {
+                            fragmentSMM.remove(c);
+                            fragmentSender.deletePacketFromRegistry(c);
+                        }
+                        idsToRemove.clear();
                     }
                     try {
                         Thread.sleep(this.fragmentationOptions.maximumFragmentAge);
