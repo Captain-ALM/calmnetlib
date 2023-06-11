@@ -84,6 +84,7 @@ public class EncryptedPacket implements IStreamedPacket, IInternalCache {
      * @param factory The packet factory to use.
      * @param loader The Packet Loader to use.
      * @param cipherFactory The cipher factory to use.
+     * @param packet The packet to use.
      * @throws NullPointerException factory, loader or cipherFactory is null.
      */
     public EncryptedPacket(IPacketFactory factory, PacketLoader loader, ICipherFactory cipherFactory, IPacket packet) {
@@ -97,6 +98,7 @@ public class EncryptedPacket implements IStreamedPacket, IInternalCache {
      * @param factory The packet factory to use.
      * @param loader The Packet Loader to use.
      * @param cipherFactory The cipher factory to use.
+     * @param packet The packet to use.
      * @param useCache If the encrypted data should be cached.
      * @throws NullPointerException factory, loader or cipherFactory is null.
      */

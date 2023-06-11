@@ -327,6 +327,7 @@ public class PacketLoader {
      *
      * @param packet The packet to save.
      * @param writeInformation Write the {@link PacketProtocolInformation} to the beginning of the array.
+     * @return The written packet data as a byte array.
      * @throws NullPointerException A parameter is null.
      * @throws PacketException An Exception has occurred.
      */
@@ -449,13 +450,13 @@ public class PacketLoader {
      * @param outputStream The output stream to use.
      * @param i The integer to store.
      * @throws NullPointerException outputStream is null.
-     * @throws IllegalArgumentException i is less than 0.
      * @throws IOException An I/O error has occurred.
      */
     public static void writeInteger(OutputStream outputStream, int i) throws IOException {
         if (outputStream == null) throw new NullPointerException("outputStream is null");
-        if (i < 0) throw new IllegalArgumentException("i is less than 0");
-        outputStream.write(i / 16777216);
+        boolean neg = i < 0;
+        if (i < 0) i = -(Integer.MIN_VALUE - i);
+        outputStream.write((i / 16777216) + ((neg) ? 128 : 0));
         i %= 16777216;
         outputStream.write(i / 65536);
         i %= 65536;
@@ -521,12 +522,12 @@ public class PacketLoader {
      *
      * @param i The integer to save.
      * @return The byte array.
-     * @throws IllegalArgumentException i is less than 0.
      */
     public static byte[] getByteArrayFromInteger(int i) {
-        if (i < 0) throw new IllegalArgumentException("i is less than 0");
+        boolean neg = i < 0;
+        if (i < 0) i = -(Integer.MIN_VALUE - i);
         byte[] toret = new byte[4];
-        toret[0] = (byte) (i / 16777216);
+        toret[0] = (byte) ((i / 16777216) + ((neg) ? 128 : 0));
         i %= 16777216;
         toret[1] = (byte) (i / 65536);
         i %= 65536;
