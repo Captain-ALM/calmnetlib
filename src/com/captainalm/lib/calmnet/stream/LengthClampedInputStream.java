@@ -53,8 +53,74 @@ public class LengthClampedInputStream extends FilterInputStream {
         return super.read();
     }
 
-    protected synchronized void decrementMarkResetLength() {
-        if (markResetLength >= 0) markResetLength--;
+
+    /**
+     * Reads up to <code>len</code> bytes of data from this input stream
+     * into an array of bytes. If <code>len</code> is not zero, the method
+     * blocks until some input is available; otherwise, no
+     * bytes are read and <code>0</code> is returned.
+     * <p>
+     * This method simply performs <code>in.read(b, off, len)</code>
+     * and returns the result.
+     *
+     * @param b   the buffer into which the data is read.
+     * @param off the start offset in the destination array <code>b</code>
+     * @param len the maximum number of bytes read.
+     * @return the total number of bytes read into the buffer, or
+     * <code>-1</code> if there is no more data because the end of
+     * the stream has been reached.
+     * @throws NullPointerException      If <code>b</code> is <code>null</code>.
+     * @throws IndexOutOfBoundsException If <code>off</code> is negative,
+     *                                   <code>len</code> is negative, or <code>len</code> is greater than
+     *                                   <code>b.length - off</code>
+     * @throws IOException               if an I/O error occurs.
+     * @see FilterInputStream#in
+     */
+    @Override
+    public int read(byte[] b, int off, int len) throws IOException {
+        if (closed) throw new IOException("stream closed");
+        if (clampedLength < 1)
+            return -1;
+        int lena = super.read(b, off, Math.min(len, positiveInt(clampedLength)));
+        clampedLength -= lena;
+        decrementMarkResetLength(lena);
+        return lena;
+    }
+
+    private int positiveInt(long value) {
+        if (value > Integer.MAX_VALUE) return Integer.MAX_VALUE;
+        return (int) value;
+    }
+
+    /**
+     * Skips over and discards <code>n</code> bytes of data from the
+     * input stream. The <code>skip</code> method may, for a variety of
+     * reasons, end up skipping over some smaller number of bytes,
+     * possibly <code>0</code>. The actual number of bytes skipped is
+     * returned.
+     * <p>
+     * This method simply performs <code>in.skip(n)</code>.
+     *
+     * @param n the number of bytes to be skipped.
+     * @return the actual number of bytes skipped.
+     * @throws IOException if the stream does not support seek,
+     *                     or if some other I/O error occurs.
+     */
+    @Override
+    public long skip(long n) throws IOException {
+        if (closed) throw new IOException("stream closed");
+        long len = super.skip(Math.min(n, clampedLength));
+        clampedLength -= positiveInt(len);
+        decrementMarkResetLength(positiveInt(len));
+        return len;
+    }
+
+    protected void decrementMarkResetLength() {
+        decrementMarkResetLength(1);
+    }
+
+    protected synchronized void decrementMarkResetLength(int i) {
+        if (markResetLength-i >= -1) markResetLength-=i; else markResetLength = -1;
     }
 
     /**
@@ -71,7 +137,7 @@ public class LengthClampedInputStream extends FilterInputStream {
     @Override
     public int available() throws IOException {
         if (closed) throw new IOException("stream closed");
-        return Math.min(super.available(), clampedLength);
+        return Math.min(super.available(), positiveInt(clampedLength));
     }
 
     /**
@@ -114,9 +180,11 @@ public class LengthClampedInputStream extends FilterInputStream {
     @Override
     public synchronized void reset() throws IOException {
         if (closed) return;
-        super.reset();
-        if (markResetLength >= 0) clampedLength += (markReadLimit - markResetLength);
-        markResetLength = -1;
+        if (super.markSupported() && markResetLength >= 0) {
+            super.reset();
+            clampedLength += (markReadLimit - markResetLength);
+            markResetLength = markReadLimit ;
+        }
     }
 
     /**
